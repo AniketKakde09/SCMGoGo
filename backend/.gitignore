@@ -1,0 +1,85 @@
+# ============================================================================
+# Python Core & Bytecode
+# ============================================================================
+__pycache__/*
+*.py[cod]
+*$py.class
+*.so
+agents/*
+backend/agents/__pycache__/*
+# ============================================================================
+# Virtual Environments (Never commit libraries)
+# ============================================================================
+.venv/
+venv/
+ENV/
+env/
+pythonenv*/
+venvScmGoGo/
+.scmgogovenv/
+
+# ============================================================================
+# Environment Variables & Secrets (Crucial for security)
+# ============================================================================
+.env
+.env.local
+.env.*
+.secrets
+*.pem
+*.key
+
+# ============================================================================
+# Distribution & Packaging (Build artifacts)
+# ============================================================================
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================================================
+# Testing, Coverage, and Code Quality
+# ============================================================================
+.target/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================================
+# IDEs & Text Editors
+# ============================================================================
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# PyCharm / IntelliJ
+.idea/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# ============================================================================
+# Operating System Files
+# ============================================================================
+.DS_Store
+Thumbs.db

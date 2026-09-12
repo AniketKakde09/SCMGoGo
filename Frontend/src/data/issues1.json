@@ -1,0 +1,168 @@
+[
+  {
+    "issue_type": "Epic",
+    "summary": "Container Security",
+    "description": "Implement container image security controls including vulnerability scanning, CIS benchmark hardening, and image signing to ensure all container artifacts meet organizational security standards."
+  },
+  {
+    "issue_type": "Story",
+    "summary": "Integrate Trivy scanning into container build pipeline",
+    "description": "Add a Trivy scan step to the GitLab CI pipeline that evaluates newly built container images and fails the pipeline on high\u2011severity vulnerabilities.",
+    "story_points": 5,
+    "dependencies": [],
+    "acceptance_criteria": [
+      "Given a newly built container image, when the pipeline runs the Trivy scan, then any HIGH or CRITICAL severity vulnerabilities cause the pipeline to fail.",
+      "Given a successful scan, then a detailed scan report is attached as a pipeline artifact."
+    ],
+    "parent": "Container Security"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Configure Trivy in CI environment",
+    "description": "Install Trivy in the CI runner, add configuration files, and verify it can run locally.",
+    "parent": "Integrate Trivy scanning into container build pipeline"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Add Trivy scan job to .gitlab-ci.yml",
+    "description": "Create a new job that runs after the image build step, executes Trivy against the built image, and captures the exit code.",
+    "parent": "Integrate Trivy scanning into container build pipeline"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Implement failure rule and report publishing",
+    "description": "Set the job to fail on HIGH/CRITICAL findings and publish the scan report as an artifact.",
+    "parent": "Integrate Trivy scanning into container build pipeline"
+  },
+  {
+    "issue_type": "Story",
+    "summary": "Apply CIS Docker Benchmark hardening to base images",
+    "description": "Automate CIS Docker Benchmark checks on base images and enforce compliance before images are promoted.",
+    "story_points": 8,
+    "dependencies": [
+      "Integrate Trivy scanning into container build pipeline"
+    ],
+    "acceptance_criteria": [
+      "Given a base image, when the CIS benchmark job runs, then any non\u2011compliant configuration is reported in the job output.",
+      "Given a compliant image, then the job passes and a compliance badge is generated for the pipeline."
+    ],
+    "parent": "Container Security"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Select and install CIS benchmark tool",
+    "description": "Choose a tool such as Docker Bench for Security, add it to the CI runner, and verify execution.",
+    "parent": "Apply CIS Docker Benchmark hardening to base images"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Create compliance job in .gitlab-ci.yml",
+    "description": "Add a job that runs the benchmark against the built image and captures results.",
+    "parent": "Apply CIS Docker Benchmark hardening to base images"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Generate compliance report and badge",
+    "description": "Parse the benchmark output, fail the job on violations, and produce a badge artifact for visibility.",
+    "parent": "Apply CIS Docker Benchmark hardening to base images"
+  },
+  {
+    "issue_type": "Story",
+    "summary": "Implement container image signing and verification",
+    "description": "Sign container images after they pass scanning and hardening, and verify signatures during deployment to prevent tampering.",
+    "story_points": 5,
+    "dependencies": [
+      "Apply CIS Docker Benchmark hardening to base images"
+    ],
+    "acceptance_criteria": [
+      "Given a successfully built and scanned image, when the signing job runs, then the image is signed and the signature is stored as an artifact.",
+      "Given a signed image, when the deployment stage pulls the image, then a verification step ensures the signature is valid and fails the pipeline if verification fails."
+    ],
+    "parent": "Container Security"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Set up Cosign (or Notary) signing tool",
+    "description": "Install the signing tool in the CI environment and configure keys for signing.",
+    "parent": "Implement container image signing and verification"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Add signing job after successful scans",
+    "description": "Create a CI job that signs the image, uploads the signature, and records the signed image tag.",
+    "parent": "Implement container image signing and verification"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Add verification step in deployment stage",
+    "description": "Implement a job that verifies the image signature before deployment and aborts on failure.",
+    "parent": "Implement container image signing and verification"
+  },
+  {
+    "issue_type": "Epic",
+    "summary": "CI/CD Pipeline Security",
+    "description": "Strengthen the GitLab CI/CD pipeline by integrating static code analysis, enforcing OWASP guidelines, and detecting hard\u2011coded secrets."
+  },
+  {
+    "issue_type": "Story",
+    "summary": "Integrate Snyk static code analysis into GitLab CI",
+    "description": "Run Snyk SAST on each code commit and fail the pipeline on critical vulnerabilities.",
+    "story_points": 5,
+    "dependencies": [],
+    "acceptance_criteria": [
+      "Given a code commit, when the Snyk job runs, then any CRITICAL vulnerability causes the pipeline to fail.",
+      "Given no critical issues, then the pipeline proceeds and a Snyk report is attached as an artifact."
+    ],
+    "parent": "CI/CD Pipeline Security"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Configure Snyk CLI in CI environment",
+    "description": "Install the Snyk CLI on the runner and add authentication tokens.",
+    "parent": "Integrate Snyk static code analysis into GitLab CI"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Add Snyk scan job to .gitlab-ci.yml",
+    "description": "Create a job that runs `snyk test` on the codebase and captures the exit status.",
+    "parent": "Integrate Snyk static code analysis into GitLab CI"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Set failure thresholds and publish report",
+    "description": "Configure the job to fail on CRITICAL findings and store the Snyk HTML/JSON report as an artifact.",
+    "parent": "Integrate Snyk static code analysis into GitLab CI"
+  },
+  {
+    "issue_type": "Story",
+    "summary": "Enforce OWASP CI/CD guidelines in pipeline configuration",
+    "description": "Validate pipeline definitions against OWASP CI/CD best\u2011practice checklist and block non\u2011compliant merges.",
+    "story_points": 8,
+    "dependencies": [
+      "Integrate Snyk static code analysis into GitLab CI"
+    ],
+    "acceptance_criteria": [
+      "Given a merge request, when the OWASP validation job runs, then any guideline violation (e.g., insecure secret handling) blocks the merge.",
+      "Given a compliant pipeline, then a compliance badge is added to the merge request."
+    ],
+    "parent": "CI/CD Pipeline Security"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Define OWASP CI/CD checklist",
+    "description": "Document required checks such as secret handling, image provenance, and least\u2011privilege runner settings.",
+    "parent": "Enforce OWASP CI/CD guidelines in pipeline configuration"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Implement validation job in .gitlab-ci.yml",
+    "description": "Add a job that lints the pipeline YAML against the checklist and returns a pass/fail status.",
+    "parent": "Enforce OWASP CI/CD guidelines in pipeline configuration"
+  },
+  {
+    "issue_type": "Task",
+    "summary": "Publish compliance report and enforce MR rule",
+    "description": "Generate a report artifact, add a badge, and configure GitLab to prevent merging when the job fails.",
+    "parent": "Enforce OWASP CI/CD guidelines in pipeline configuration"
+  }
+]

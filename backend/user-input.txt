@@ -1,0 +1,34 @@
+For PI 2026-Q3, our primary delivery focus is driven by Project Horizon to overhaul core platform performance, alongside Velocity Boost to streamline the enterprise user onboarding workflow. We will prioritize these strategic initiatives across our upcoming sprints while actively managing any cross-team dependencies.
+
+
+For PI 2026-Q3, we have found that we need 4 epics 1st it container security, ci/cd pipeline security, gitlab migration
+and grafana dashboards configuration and issues related to them
+
+
+
+For PI 2026-Q3, we have identified four key epics: Container Security, CI/CD Pipeline Security, GitLab Migration, and Grafana Dashboard Configuration.
+Epic 1 – Container Security: Focus on container image vulnerability scanning, container hardening, and remediation of identified security issues. Stories will cover image scanning, Docker/container security best practices, and resolution of security findings.
+Epic 2 – CI/CD Pipeline Security: Focus on securing CI/CD pipelines through automated security scanning, secrets management, and pipeline hardening. Stories will cover security scan integration, credential protection, and remediation of pipeline security issues.
+Epic 3 – GitLab Migration: Focus on migrating repositories and CI/CD pipelines to GitLab while maintaining functionality and access controls. Stories will cover repository migration, CI/CD migration, and GitLab access, integration, and migration issues.
+Epic 4 – Grafana Dashboards Configuration and Issues: Focus on configuring dashboards, monitoring and alerts, and resolving dashboard-related issues. Stories will cover dashboard configuration, alert setup, and dashboard troubleshooting and improvements.
+
+
+
+
+
+
+
+
+
+
+
+====
+PI 2026-Q3 includes four epics: Container Security, CI/CD Pipeline Security, GitLab Migration, and Grafana Dashboard Configuration.
+
+Container Security: Perform image vulnerability scanning, container hardening, and security issue remediation.
+
+CI/CD Pipeline Security: Implement pipeline security scanning, secrets protection, and security hardening.
+
+GitLab Migration: Migrate repositories and CI/CD pipelines to GitLab, including access, integration, and migration issue resolution.
+
+Grafana Dashboard Configuration: Configure dashboards, monitoring, alerts, and resolve dashboard-related issues.

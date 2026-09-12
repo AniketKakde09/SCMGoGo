@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+openai
+python-dotenv
+psycopg[binary]
+httpx
+requests
+jira
+pymupdf
+python-docx
+loguru
+orjson
+typing-extensions

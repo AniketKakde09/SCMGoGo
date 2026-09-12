@@ -1,0 +1,96 @@
+[
+  {
+    "issue_type": "Epic",
+    "summary": "Container Security",
+    "description": "Implement image vulnerability scanning, container hardening, and security issue remediation for containers orchestrated with Kubernetes or Docker Swarm.",
+    "nodeId": "epic-0",
+    "jiraKey": null
+  },
+  {
+    "issue_type": "Story",
+    "summary": "Image vulnerability scanning",
+    "description": "Integrate a selected scanning tool to automatically scan container images for known vulnerabilities.",
+    "story_points": 5,
+    "dependencies": [],
+    "acceptance_criteria": [
+      "Given a container image is built, When the scanning tool runs as part of the CI pipeline, Then identified vulnerabilities are reported in a traceable format."
+    ],
+    "parent": "Container Security",
+    "nodeId": "epic-0-story-0",
+    "jiraKey": null
+  },
+  {
+    "issue_type": "Sub-task",
+    "summary": "Integrate scanning tool into CI pipeline",
+    "description": "Add the chosen scanning tool (e.g., Trivy, Clair, or Anchore) to the CI workflow to automatically scan each built image.",
+    "parent": "Image vulnerability scanning",
+    "nodeId": "epic-0-story-0-task-0",
+    "jiraKey": null
+  },
+  {
+    "issue_type": "Sub-task",
+    "summary": "Configure scanning policies",
+    "description": "Define which vulnerability severities trigger build failures or alerts.",
+    "parent": "Image vulnerability scanning",
+    "nodeId": "epic-0-story-0-task-1",
+    "jiraKey": null
+  },
+  {
+    "issue_type": "Story",
+    "summary": "Container hardening",
+    "description": "Apply hardening measures to containers to meet the CIS Docker Benchmark standards.",
+    "story_points": 5,
+    "dependencies": [],
+    "acceptance_criteria": [
+      "Given a container runtime environment, When hardening configurations are applied, Then the environment complies with the CIS Docker Benchmark."
+    ],
+    "parent": "Container Security",
+    "nodeId": "epic-0-story-1",
+    "jiraKey": null
+  },
+  {
+    "issue_type": "Sub-task",
+    "summary": "Implement CIS Benchmark compliance scripts",
+    "description": "Create scripts or configuration templates that enforce the required benchmark settings.",
+    "parent": "Container hardening",
+    "nodeId": "epic-0-story-1-task-0",
+    "jiraKey": null
+  },
+  {
+    "issue_type": "Sub-task",
+    "summary": "Validate hardening across environments",
+    "description": "Run compliance checks on test clusters to ensure all hardening rules are satisfied.",
+    "parent": "Container hardening",
+    "nodeId": "epic-0-story-1-task-1",
+    "jiraKey": null
+  },
+  {
+    "issue_type": "Story",
+    "summary": "Security issue remediation",
+    "description": "Automate remediation of identified security issues within the CI/CD pipeline.",
+    "story_points": 5,
+    "dependencies": [],
+    "acceptance_criteria": [
+      "Given vulnerabilities are reported, When the remediation workflow is triggered, Then the affected image is rebuilt without the identified issues and redeployed."
+    ],
+    "parent": "Container Security",
+    "nodeId": "epic-0-story-2",
+    "jiraKey": null
+  },
+  {
+    "issue_type": "Sub-task",
+    "summary": "Define remediation workflow in CI/CD",
+    "description": "Design a pipeline step that initiates image rebuilds when vulnerabilities exceed the defined threshold.",
+    "parent": "Security issue remediation",
+    "nodeId": "epic-0-story-2-task-0",
+    "jiraKey": null
+  },
+  {
+    "issue_type": "Sub-task",
+    "summary": "Automate rebuild and redeployment of fixed images",
+    "description": "Ensure the pipeline automatically rebuilds, tests, and redeploys images after successful remediation.",
+    "parent": "Security issue remediation",
+    "nodeId": "epic-0-story-2-task-1",
+    "jiraKey": null
+  }
+]
