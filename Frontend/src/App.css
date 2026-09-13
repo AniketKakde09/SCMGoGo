@@ -1544,3 +1544,478 @@ html,
 @media (max-width: 720px) {
   .add-work-item-menu { width: min(300px, 86vw); }
 }
+
+/* =========================================================
+   Foreman Smart Canvas - Feature / State / Readiness additions
+   ========================================================= */
+.feature-card {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-left: 3px solid #7c3aed;
+  border-radius: 8px;
+  padding: 12px;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  user-select: none;
+  transition: 0.15s ease;
+}
+
+.feature-card:hover {
+  border-color: #8b5cf6;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.09);
+  transform: translateY(-1px);
+}
+
+.feature-card .feature-title {
+  color: #111827;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.feature-card .feature-description {
+  color: #64748b;
+}
+
+.feature-badge {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
+
+.feature-card .handle-top,
+.feature-card .handle-bottom {
+  background: #7c3aed !important;
+}
+
+.work-state {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.work-state.new {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.work-state.modified {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.work-state.existing {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.state-modified {
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.16);
+}
+
+.has-warning {
+  outline: 1px solid rgba(245, 158, 11, 0.45);
+  outline-offset: 1px;
+}
+
+.work-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.work-meta-row span,
+.sad-trace {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 650;
+  padding: 3px 6px;
+}
+
+.sad-trace {
+  margin-top: 10px;
+  width: fit-content;
+}
+
+.readiness-warning {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid #fde68a;
+  border-radius: 7px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.smart-panel-icon.feature {
+  color: #7e22ce;
+  background: linear-gradient(145deg, #f3e8ff, #faf5ff);
+}
+
+.smart-panel-type.feature {
+  color: #7e22ce;
+}
+
+.add-type-icon.feature {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
+
+.smart-grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.smart-grid-two > div > label,
+.smart-check-toggle span {
+  display: block;
+  margin-bottom: 6px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.smart-grid-two input,
+.smart-grid-two select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #dbe3ec;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 9px 10px;
+  font-size: 11px;
+  outline: none;
+}
+
+.smart-grid-two input:focus,
+.smart-grid-two select:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.smart-check-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  margin-top: 20px;
+  cursor: pointer;
+}
+
+.smart-check-toggle input {
+  width: auto;
+  margin: 0;
+}
+
+.smart-check-toggle span {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .smart-grid-two {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   Canvas Stage 2 - hierarchy/dependency interactions
+   ========================================================= */
+
+.dependency-edge-label {
+  padding: 3px 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #475569;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+  white-space: nowrap;
+}
+
+.edge-relationship-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.relationship-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.22);
+  backdrop-filter: blur(2px);
+}
+
+.relationship-dialog {
+  width: min(520px, 100%);
+  overflow: hidden;
+  border: 1px solid #dbe3ec;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+}
+
+.relationship-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.relationship-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.relationship-dialog h3 {
+  margin: 0;
+  max-width: 420px;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relationship-close {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.relationship-close:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.relationship-options {
+  display: grid;
+  gap: 9px;
+  padding: 16px;
+}
+
+.relationship-options button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.relationship-options button:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+  transform: translateY(-1px);
+}
+
+.relationship-options button strong {
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.relationship-options button span {
+  color: #64748b;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.btn-canvas-undo {
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #334155;
+  padding: 8px 11px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.btn-canvas-undo:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.canvas-notice {
+  display: inline-block;
+  max-width: 280px;
+  overflow: hidden;
+  border: 1px solid #dbeafe;
+  border-radius: 7px;
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 8px 10px;
+  font-size: 9px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* =========================================================
+   Foreman Existing Board / Excel workspace
+   ========================================================= */
+.foreman-board-panel-wrap { margin: 12px; }
+.foreman-board-panel {
+  width: 306px;
+  padding: 14px;
+  border: 1px solid #dbe4ee;
+  border-radius: 14px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 10px 30px rgba(15,23,42,.10);
+  backdrop-filter: blur(10px);
+  color: #0f172a;
+}
+.foreman-board-panel__header,
+.foreman-sprint-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.foreman-board-panel__header strong { font-size: 13px; display: block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.foreman-board-eyebrow { color: #64748b; font-size: 9px; font-weight: 800; letter-spacing: .12em; margin-bottom: 3px; }
+.foreman-board-count { border: 1px solid #dbe4ee; border-radius: 999px; padding: 4px 8px; background: #f8fafc; color: #475569; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.foreman-board-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
+.foreman-board-actions button,
+.foreman-board-secondary-actions button,
+.foreman-board-links button,
+.foreman-health-filters button {
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  padding: 8px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.foreman-board-actions button:hover,
+.foreman-board-secondary-actions button:hover,
+.foreman-board-links button:hover { border-color: #94a3b8; background: #f8fafc; }
+.foreman-board-actions button:disabled { opacity: .55; cursor: wait; }
+.foreman-import-message { margin-top: 8px; border-radius: 8px; padding: 7px 9px; background: #f8fafc; color: #64748b; font-size: 9.5px; line-height: 1.4; }
+.foreman-summary-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-top: 10px; }
+.foreman-summary-grid div { padding: 8px 4px; border-radius: 9px; background: #f8fafc; text-align: center; }
+.foreman-summary-grid strong { display:block; font-size: 13px; color:#0f172a; }
+.foreman-summary-grid span { display:block; margin-top:2px; font-size:8px; color:#64748b; }
+.foreman-search-wrap { display:flex; align-items:center; gap:7px; margin-top:10px; padding: 0 9px; border:1px solid #dbe4ee; border-radius:9px; background:#fff; }
+.foreman-search-wrap span { color:#94a3b8; font-size:14px; }
+.foreman-search-wrap input { width:100%; border:0; outline:0; padding:9px 0; background:transparent; font-size:11px; color:#0f172a; }
+.foreman-filter-row { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px; }
+.foreman-filter-row select { border:1px solid #dbe4ee; border-radius:8px; background:#fff; padding:8px; font-size:10px; color:#334155; outline:none; }
+.foreman-board-secondary-actions { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px; }
+.foreman-board-secondary-actions button.active { background:#eff6ff; border-color:#93c5fd; color:#1d4ed8; }
+.foreman-board-links { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px; }
+.foreman-board-links button { display:flex; align-items:center; justify-content:center; gap:6px; }
+.health-badge { min-width:18px; height:18px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; background:#fef3c7; color:#92400e; font-size:9px; }
+.health-badge.error { background:#fee2e2; color:#b91c1c; }
+
+.foreman-drawer-backdrop { position:fixed; inset:0; z-index:1000; background:rgba(15,23,42,.18); display:flex; justify-content:flex-end; }
+.foreman-drawer { width:min(430px,92vw); height:100%; box-sizing:border-box; background:#fff; border-left:1px solid #dbe4ee; box-shadow:-14px 0 36px rgba(15,23,42,.14); padding:20px; overflow:auto; }
+.foreman-drawer-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding-bottom:14px; border-bottom:1px solid #eef2f7; }
+.foreman-drawer-header h3 { margin:0; font-size:18px; color:#0f172a; }
+.foreman-drawer-close { border:0; background:#f1f5f9; width:32px; height:32px; border-radius:9px; color:#475569; font-size:20px; cursor:pointer; }
+.foreman-health-filters { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0; }
+.foreman-health-filters button { text-transform:capitalize; padding:6px 9px; }
+.foreman-health-filters button.active { background:#0f172a; border-color:#0f172a; color:#fff; }
+.foreman-health-list { display:flex; flex-direction:column; gap:8px; }
+.foreman-health-card { width:100%; text-align:left; border:1px solid #e2e8f0; border-radius:11px; background:#fff; padding:11px 12px; cursor:pointer; }
+.foreman-health-card:hover { background:#f8fafc; border-color:#cbd5e1; }
+.foreman-health-card.severity-error { border-left:4px solid #ef4444; }
+.foreman-health-card.severity-warning { border-left:4px solid #f59e0b; }
+.foreman-health-card-title { display:flex; align-items:center; gap:8px; color:#0f172a; font-size:11px; }
+.foreman-health-card-title > span { width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; border-radius:50%; background:#fef2f2; color:#dc2626; font-weight:900; }
+.foreman-health-card p { margin:7px 0 5px; color:#64748b; font-size:10px; line-height:1.45; }
+.foreman-health-card small { color:#2563eb; font-size:9px; font-weight:700; }
+.foreman-empty-state { padding:24px; text-align:center; color:#94a3b8; font-size:11px; }
+
+.foreman-sprint-list { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
+.foreman-sprint-card { border:1px solid #e2e8f0; border-radius:11px; padding:11px 12px; background:#fff; }
+.foreman-sprint-card.over { border-color:#fecaca; background:#fffafa; }
+.foreman-sprint-card-head strong { display:block; color:#0f172a; font-size:11px; }
+.foreman-sprint-card-head small { display:block; color:#94a3b8; font-size:9px; margin-top:2px; }
+.foreman-sprint-card-head > span { font-size:10px; font-weight:800; color:#475569; }
+.foreman-sprint-card.over .foreman-sprint-card-head > span { color:#b91c1c; }
+.foreman-capacity-track { height:7px; background:#e2e8f0; border-radius:999px; overflow:hidden; margin-top:9px; }
+.foreman-capacity-track > div { height:100%; background:#64748b; border-radius:999px; }
+.foreman-sprint-card.over .foreman-capacity-track > div { background:#ef4444; }
+.foreman-sprint-meta { display:flex; justify-content:space-between; margin-top:6px; color:#94a3b8; font-size:9px; }
+
+@media (max-width: 900px) {
+  .foreman-board-panel { width: 270px; }
+  .foreman-summary-grid { grid-template-columns: repeat(2,1fr); }
+}
+.foreman-board-links { grid-template-columns: 1fr 1fr; }
+.foreman-sad-list,.foreman-change-list { display:flex; flex-direction:column; gap:9px; margin-top:15px; }
+.foreman-sad-card { width:100%; text-align:left; border:1px solid #e2e8f0; border-radius:11px; background:#fff; padding:11px 12px; cursor:pointer; }
+.foreman-sad-card:hover { background:#f8fafc; border-color:#cbd5e1; }
+.foreman-sad-card > div { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.foreman-sad-card > div strong { color:#1d4ed8; font-size:10px; }
+.foreman-sad-card > div span { color:#64748b; font-size:9px; }
+.foreman-sad-card h4 { margin:6px 0 4px; color:#0f172a; font-size:11px; }
+.foreman-sad-card p { margin:0; color:#64748b; font-size:9.5px; line-height:1.45; }
+.foreman-sad-card small { display:block; margin-top:7px; color:#2563eb; font-size:9px; font-weight:700; }
+.foreman-change-card { border:1px solid #e2e8f0; border-radius:11px; background:#fff; padding:11px 12px; }
+.foreman-change-card-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.foreman-change-card-head strong { color:#0f172a; font-size:11px; }
+.foreman-change-card-head span { border-radius:999px; padding:3px 7px; background:#f1f5f9; color:#475569; font-size:8.5px; font-weight:700; }
+.foreman-change-card p { margin:8px 0; color:#334155; font-size:10px; line-height:1.45; }
+.foreman-change-meta { display:flex; gap:6px; flex-wrap:wrap; }
+.foreman-change-meta span { border:1px solid #e2e8f0; border-radius:999px; padding:3px 7px; color:#64748b; font-size:8.5px; }
+.foreman-duplicate-hint { margin-top:8px; padding:7px 8px; border-radius:8px; background:#fffbeb; color:#92400e; font-size:9px; line-height:1.4; }

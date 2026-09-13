@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
 import {
@@ -23,6 +23,14 @@ import {
 
 import "@xyflow/react/dist/style.css";
 import "../App.css";
+import {
+  analyzeForemanDataset,
+  buildCanvasIssues,
+  getBundledForemanDataset,
+  getDatasetSummary,
+  parseForemanWorkbook,
+} from "../utils/foremanDataset";
+
 
 // =========================================================
 // Backend Configuration
@@ -36,6 +44,9 @@ const API_BASE_URL = "http://localhost:8000";
 
 const EPIC_WIDTH = 290;
 const EPIC_HEIGHT = 210;
+
+const FEATURE_WIDTH = 300;
+const FEATURE_HEIGHT = 150;
 
 const STORY_WIDTH = 320;
 const STORY_BASE_HEIGHT = 170;
@@ -88,6 +99,72 @@ function calculateDynamicSpacing(
 }
 
 // =========================================================
+// Canvas relationship / hierarchy helpers
+// =========================================================
+
+const HIERARCHY_RULES = {
+  // Preferred hierarchy is Epic -> Feature -> Story.
+  // Story -> Epic remains valid for existing backlogs that do not yet have Feature nodes.
+  epic: ["feature", "story"],
+  feature: ["story"],
+  story: [],
+};
+
+function canCreateHierarchy(sourceNode, targetNode) {
+  if (!sourceNode || !targetNode || sourceNode.id === targetNode.id) {
+    return false;
+  }
+
+  return (HIERARCHY_RULES[sourceNode.type] || []).includes(targetNode.type);
+}
+
+function getAbsoluteNodeRect(node, allNodes) {
+  let x = Number(node?.position?.x) || 0;
+  let y = Number(node?.position?.y) || 0;
+  let parentId = node?.parentId;
+  const seen = new Set();
+
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
+    const parent = allNodes.find((item) => item.id === parentId);
+    if (!parent) break;
+    x += Number(parent.position?.x) || 0;
+    y += Number(parent.position?.y) || 0;
+    parentId = parent.parentId;
+  }
+
+  const width =
+    Number(node?.measured?.width) ||
+    Number(node?.width) ||
+    Number(node?.style?.width) ||
+    (node?.type === "epic"
+      ? EPIC_WIDTH
+      : node?.type === "feature"
+        ? FEATURE_WIDTH
+        : STORY_WIDTH);
+  const height =
+    Number(node?.measured?.height) ||
+    Number(node?.height) ||
+    Number(node?.style?.height) ||
+    (node?.type === "epic"
+      ? EPIC_HEIGHT
+      : node?.type === "feature"
+        ? FEATURE_HEIGHT
+        : STORY_BASE_HEIGHT);
+
+  return { x, y, width, height, cx: x + width / 2, cy: y + height / 2 };
+}
+
+function pointInsideRect(point, rect, padding = 18) {
+  return (
+    point.x >= rect.x - padding &&
+    point.x <= rect.x + rect.width + padding &&
+    point.y >= rect.y - padding &&
+    point.y <= rect.y + rect.height + padding
+  );
+}
+
+// =========================================================
 // Custom Edge
 // =========================================================
 
@@ -114,15 +191,16 @@ function CustomEdge({
     borderRadius: 12,
   });
 
-  const isPrimary = data.edgeType !== "secondary";
-
-  const isAnimated = data.animated ?? isPrimary;
-
-  const edgeStroke = isPrimary ? "#334155" : "#94A3B8";
-
-  const edgeWidth = isPrimary ? 2.5 : 1.5;
-
-  const strokeDasharray = isPrimary ? "none" : "6,6";
+  const isHierarchy = data.relationship === "hierarchy";
+  const isDependency = data.relationship === "dependency";
+  const isPrimary = isHierarchy || data.edgeType !== "secondary";
+  const isAnimated = data.animated ?? false;
+  const edgeStroke = isHierarchy ? "#475569" : "#64748B";
+  const edgeWidth = isHierarchy ? 2.4 : 1.8;
+  const strokeDasharray = isHierarchy ? "none" : "7,6";
+  const dependencyLabel = isDependency
+    ? String(data.dependencyType || "depends on").replaceAll("_", " ")
+    : "";
 
   return (
     <>
@@ -139,6 +217,21 @@ function CustomEdge({
         className={isAnimated ? "animated-edge-flow" : ""}
       />
 
+      {isDependency && !selected && (
+        <EdgeLabelRenderer>
+          <div
+            className="dependency-edge-label nodrag nopan"
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: "none",
+            }}
+          >
+            {dependencyLabel}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+
       {selected && (
         <EdgeLabelRenderer>
           <div
@@ -149,30 +242,18 @@ function CustomEdge({
             }}
             className="edge-popover nodrag nopan"
           >
-            <button
-              className={`popover-btn ${isPrimary ? "active" : ""}`}
-              onClick={() =>
-                data.onTypeToggle && data.onTypeToggle(id, "primary")
-              }
-            >
-              Primary
-            </button>
+            <span className="edge-relationship-chip">
+              {isHierarchy ? "Hierarchy" : dependencyLabel || "Dependency"}
+            </span>
 
-            <button
-              className={`popover-btn ${!isPrimary ? "active" : ""}`}
-              onClick={() =>
-                data.onTypeToggle && data.onTypeToggle(id, "secondary")
-              }
-            >
-              Secondary
-            </button>
-
-            <button
-              className={`popover-btn ${isAnimated ? "active-pulse" : ""}`}
-              onClick={() => data.onAnimToggle && data.onAnimToggle(id)}
-            >
-              {isAnimated ? "⚡ Flow" : "⏸ Pause"}
-            </button>
+            {!isHierarchy && (
+              <button
+                className={`popover-btn ${isAnimated ? "active-pulse" : ""}`}
+                onClick={() => data.onAnimToggle && data.onAnimToggle(id)}
+              >
+                {isAnimated ? "⚡ Flow" : "⏸ Flow"}
+              </button>
+            )}
 
             <button
               className="popover-btn delete-btn"
@@ -217,7 +298,7 @@ function EpicNode({ id, data }) {
   };
 
   return (
-    <div className={`epic-card ${isEditing ? "editing" : ""}`}>
+    <div className={`epic-card ${isEditing ? "editing" : ""} state-${data.changeState || (data.jiraKey ? "existing" : "new")} ${(data.readinessIssues || []).length ? "has-warning" : ""}`}>
       <div className="card-header">
         <span className="badge epic-badge">EPIC</span>
 
@@ -251,6 +332,12 @@ function EpicNode({ id, data }) {
 
         {data.jiraKey && <span className="jira-key">{data.jiraKey}</span>}
 
+        {!data.jiraKey && (
+          <span className={`work-state ${data.changeState || "new"}`}>
+            {(data.changeState || "new") === "modified" ? "MODIFIED" : "NEW"}
+          </span>
+        )}
+
         {isEditing ? (
           <button className="btn-save" onClick={handleSave}>
             Save 🔒
@@ -283,6 +370,12 @@ function EpicNode({ id, data }) {
           <div className="card-title">{data.summary}</div>
 
           <div className="card-description">{data.description}</div>
+
+          {data.sadSectionId ? (
+            <div className="sad-trace">S-AD: {data.sadSectionId}</div>
+          ) : (
+            <div className="readiness-warning">⚠ Missing S-AD</div>
+          )}
         </div>
       )}
 
@@ -298,6 +391,81 @@ function EpicNode({ id, data }) {
         id="bottom"
         className="handle handle-bottom nodrag"
       />
+    </div>
+  );
+}
+
+// =========================================================
+// Feature Node
+// =========================================================
+
+function FeatureNode({ id, data }) {
+  const readinessIssues = Array.isArray(data.readinessIssues)
+    ? data.readinessIssues
+    : [];
+  const changeState =
+    data.changeState || (data.jiraKey ? "existing" : "new");
+
+  return (
+    <div
+      className={`feature-card state-${changeState} ${
+        readinessIssues.length ? "has-warning" : ""
+      }`}
+    >
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top"
+        className="handle handle-top nodrag"
+      />
+
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        className="handle handle-bottom nodrag"
+      />
+
+      <div className="card-header">
+        <span className="badge feature-badge">FEATURE</span>
+        <div className="header-actions">
+          {data.jiraKey ? (
+            <span className="jira-key">{data.jiraKey}</span>
+          ) : (
+            <span className={`work-state ${changeState}`}>
+              {changeState === "modified" ? "MODIFIED" : "NEW"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="card-body">
+        <div className="card-title feature-title">{data.summary}</div>
+
+        {data.description && (
+          <div className="card-description feature-description">
+            {data.description}
+          </div>
+        )}
+
+        <div className="work-meta-row">
+          {data.priority && <span>{data.priority}</span>}
+          {data.sprint && <span>{data.sprint}</span>}
+          {data.sadSectionId && <span>S-AD {data.sadSectionId}</span>}
+        </div>
+
+        {readinessIssues.length > 0 && (
+          <div className="readiness-warning">
+            ⚠ {readinessIssues.slice(0, 2).join(" · ")}
+          </div>
+        )}
+      </div>
+
+      <div className="card-footer">
+        <span className="footer-meta">
+          {data.childCount || 0} {(data.childCount || 0) === 1 ? "Item" : "Items"}
+        </span>
+      </div>
     </div>
   );
 }
@@ -367,7 +535,7 @@ function StoryNode({ id, data }) {
   };
 
   return (
-    <div className={`story-card ${isEditing ? "editing" : ""}`}>
+    <div className={`story-card ${isEditing ? "editing" : ""} state-${data.changeState || (data.jiraKey ? "existing" : "new")} ${(data.readinessIssues || []).length ? "has-warning" : ""}`}>
       <Handle
         type="target"
         position={Position.Top}
@@ -383,7 +551,7 @@ function StoryNode({ id, data }) {
       />
 
       <div className="card-header">
-        <span className="badge story-badge">STORY</span>
+        <span className="badge story-badge">{String(data.issue_type || "Story").toUpperCase()}</span>
 
         {data.syncStatus === "syncing" && (
           <span className="jira-status syncing" title="Creating Jira issue...">
@@ -414,6 +582,12 @@ function StoryNode({ id, data }) {
         )}
 
         {data.jiraKey && <span className="jira-key">{data.jiraKey}</span>}
+
+        {!data.jiraKey && (
+          <span className={`work-state ${data.changeState || "new"}`}>
+            {(data.changeState || "new") === "modified" ? "MODIFIED" : "NEW"}
+          </span>
+        )}
 
         <div className="header-actions">
           {!isEditing && data.storyPoints != null && (
@@ -498,6 +672,18 @@ function StoryNode({ id, data }) {
             <div className="card-description">{data.description}</div>
           )}
 
+          <div className="work-meta-row">
+            {data.priority && <span>{data.priority}</span>}
+            {data.sprint && <span>{data.sprint}</span>}
+            {data.sadSectionId && <span>S-AD {data.sadSectionId}</span>}
+          </div>
+
+          {(data.readinessIssues || []).length > 0 && (
+            <div className="readiness-warning">
+              ⚠ {(data.readinessIssues || []).slice(0, 2).join(" · ")}
+            </div>
+          )}
+
           <div className="tasks-container">
             <div className="tasks-header">
               <span>Subtasks</span>
@@ -537,6 +723,12 @@ function NodeEditPanel({ node, onClose, onSave }) {
   const [acceptanceCriteria, setAcceptanceCriteria] = useState([]);
   const [newTask, setNewTask] = useState("");
   const [newCriteria, setNewCriteria] = useState("");
+  const [priority, setPriority] = useState("Medium");
+  const [statusValue, setStatusValue] = useState("To Do");
+  const [sprint, setSprint] = useState("");
+  const [assignee, setAssignee] = useState("");
+  const [sadSectionId, setSadSectionId] = useState("");
+  const [hasDoD, setHasDoD] = useState(false);
 
   useEffect(() => {
     if (!node) {
@@ -558,6 +750,12 @@ function NodeEditPanel({ node, onClose, onSave }) {
     );
     setNewTask("");
     setNewCriteria("");
+    setPriority(node.data.priority || "Medium");
+    setStatusValue(node.data.status || "To Do");
+    setSprint(node.data.sprint || "");
+    setAssignee(node.data.assignee || "");
+    setSadSectionId(node.data.sadSectionId || "");
+    setHasDoD(Boolean(node.data.hasDoD));
   }, [node]);
 
   if (!node) {
@@ -565,6 +763,7 @@ function NodeEditPanel({ node, onClose, onSave }) {
   }
 
   const isEpic = node.type === "epic";
+  const isFeature = node.type === "feature";
   const isStory = node.type === "story";
 
   const originalSummary = node.data.summary || "";
@@ -580,7 +779,13 @@ function NodeEditPanel({ node, onClose, onSave }) {
     description !== originalDescription ||
     String(storyPoints) !== String(originalStoryPoints) ||
     JSON.stringify(tasks) !== JSON.stringify(originalTasks) ||
-    JSON.stringify(acceptanceCriteria) !== JSON.stringify(originalCriteria);
+    JSON.stringify(acceptanceCriteria) !== JSON.stringify(originalCriteria) ||
+    priority !== (node.data.priority || "Medium") ||
+    statusValue !== (node.data.status || "To Do") ||
+    sprint !== (node.data.sprint || "") ||
+    assignee !== (node.data.assignee || "") ||
+    sadSectionId !== (node.data.sadSectionId || "") ||
+    hasDoD !== Boolean(node.data.hasDoD);
 
   const handleTaskChange = (index, value) => {
     setTasks((current) =>
@@ -648,6 +853,16 @@ function NodeEditPanel({ node, onClose, onSave }) {
     const updatedFields = {
       summary: cleanSummary,
       description: description.trim(),
+      priority,
+      status: statusValue,
+      sprint: sprint.trim(),
+      assignee: assignee.trim(),
+      sadSectionId: sadSectionId.trim(),
+      hasDoD,
+      changeState:
+        node.data.jiraKey || node.data.changeState === "existing"
+          ? "modified"
+          : node.data.changeState || "new",
     };
 
     if (isStory) {
@@ -667,7 +882,8 @@ function NodeEditPanel({ node, onClose, onSave }) {
     onClose();
   };
 
-  const issueLabel = isEpic ? "EPIC" : "STORY";
+  const issueLabel = isEpic ? "EPIC" : isFeature ? "FEATURE" : "STORY";
+  const issueTone = isEpic ? "epic" : isFeature ? "feature" : "story";
   const status = node.data.syncStatus || "idle";
 
   return (
@@ -676,13 +892,13 @@ function NodeEditPanel({ node, onClose, onSave }) {
       <aside className="smart-node-panel" onDoubleClick={(e) => e.stopPropagation()}>
         <div className="smart-panel-header">
           <div className="smart-panel-title-area">
-            <div className={`smart-panel-icon ${isEpic ? "epic" : "story"}`}>
-              {isEpic ? "E" : "S"}
+            <div className={`smart-panel-icon ${issueTone}`}>
+              {isEpic ? "E" : isFeature ? "F" : "S"}
             </div>
 
             <div style={{ minWidth: 0 }}>
               <div className="smart-panel-meta">
-                <span className={`smart-panel-type ${isEpic ? "epic" : "story"}`}>
+                <span className={`smart-panel-type ${issueTone}`}>
                   {issueLabel}
                 </span>
 
@@ -701,7 +917,7 @@ function NodeEditPanel({ node, onClose, onSave }) {
                 </span>
               </div>
 
-              <h2>{isEpic ? "Edit Epic" : "Edit Story"}</h2>
+              <h2>{isEpic ? "Edit Epic" : isFeature ? "Edit Feature" : "Edit Story"}</h2>
             </div>
           </div>
 
@@ -719,8 +935,7 @@ function NodeEditPanel({ node, onClose, onSave }) {
           <div className="smart-panel-summary-card">
             <strong>Work item editor</strong>
             <span>
-              Update the selected {isEpic ? "epic" : "story"}. Changes are applied to the
-              workflow only when you click Save Changes.
+              Update the selected {isEpic ? "epic" : isFeature ? "feature" : "story"}. Changes stay in Foreman until you explicitly publish them to Jira.
             </span>
           </div>
 
@@ -749,6 +964,64 @@ function NodeEditPanel({ node, onClose, onSave }) {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe the requirement, context and expected outcome..."
             />
+          </div>
+
+          <div className="smart-field">
+            <div className="smart-section-heading">
+              <label>Planning</label>
+              <span className="smart-section-count">Workspace</span>
+            </div>
+
+            <div className="smart-grid-two">
+              <div>
+                <label>Priority</label>
+                <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+                  <option>Highest</option>
+                  <option>High</option>
+                  <option>Medium</option>
+                  <option>Low</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Status</label>
+                <select value={statusValue} onChange={(e) => setStatusValue(e.target.value)}>
+                  <option>To Do</option>
+                  <option>In Progress</option>
+                  <option>Blocked</option>
+                  <option>Done</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Sprint</label>
+                <input value={sprint} onChange={(e) => setSprint(e.target.value)} placeholder="Sprint 4" />
+              </div>
+
+              <div>
+                <label>Assignee</label>
+                <input value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="Unassigned" />
+              </div>
+            </div>
+          </div>
+
+          <div className="smart-field">
+            <div className="smart-section-heading">
+              <label>Traceability & Readiness</label>
+              <span className="smart-section-count">Foreman</span>
+            </div>
+
+            <div className="smart-grid-two">
+              <div>
+                <label>S-AD Section</label>
+                <input value={sadSectionId} onChange={(e) => setSadSectionId(e.target.value)} placeholder="SAD-04" />
+              </div>
+
+              <label className="smart-check-toggle">
+                <input type="checkbox" checked={hasDoD} onChange={(e) => setHasDoD(e.target.checked)} />
+                <span>Definition of Done available</span>
+              </label>
+            </div>
           </div>
 
           {isStory && (
@@ -910,6 +1183,7 @@ function NodeEditPanel({ node, onClose, onSave }) {
 function CreateWorkItemPanel({
   type,
   epicOptions,
+  featureOptions,
   storyOptions,
   defaultParentId,
   onClose,
@@ -924,6 +1198,7 @@ function CreateWorkItemPanel({
   const [validationError, setValidationError] = useState("");
 
   const isEpic = type === "epic";
+  const isFeature = type === "feature";
   const isStory = type === "story";
   const isSubtask = type === "subtask";
 
@@ -940,14 +1215,16 @@ function CreateWorkItemPanel({
       return;
     }
 
-    if (type === "story") {
+    if (type === "feature") {
       setParentId(epicOptions[0]?.id || "");
+    } else if (type === "story") {
+      setParentId(featureOptions[0]?.id || epicOptions[0]?.id || "");
     } else if (type === "subtask") {
       setParentId(storyOptions[0]?.id || "");
     } else {
       setParentId("");
     }
-  }, [type, defaultParentId, epicOptions, storyOptions]);
+  }, [type, defaultParentId, epicOptions, featureOptions, storyOptions]);
 
   const addCriteria = () => {
     const value = newCriteria.trim();
@@ -962,7 +1239,15 @@ function CreateWorkItemPanel({
     );
   };
 
-  const parentOptions = isStory ? epicOptions : isSubtask ? storyOptions : [];
+  const parentOptions = isFeature
+    ? epicOptions
+    : isStory
+      ? featureOptions.length > 0
+        ? featureOptions
+        : epicOptions
+      : isSubtask
+        ? storyOptions
+        : [];
   const selectedParent = parentOptions.find((option) => option.id === parentId);
   const canCreate =
     summary.trim().length > 0 &&
@@ -976,9 +1261,11 @@ function CreateWorkItemPanel({
 
     if (!isEpic && !parentId) {
       setValidationError(
-        isStory
-          ? "Select a parent Epic before creating the Story."
-          : "Select a parent Story before creating the Sub-task.",
+        isFeature
+          ? "Select a parent Epic before creating the Feature."
+          : isStory
+            ? "Select a parent Feature before creating the Story."
+            : "Select a parent Story before creating the Sub-task.",
       );
       return;
     }
@@ -996,10 +1283,22 @@ function CreateWorkItemPanel({
     });
   };
 
-  const label = isEpic ? "EPIC" : isStory ? "STORY" : "SUB-TASK";
-  const title = isEpic ? "Create Epic" : isStory ? "Create Story" : "Create Sub-task";
-  const icon = isEpic ? "E" : isStory ? "S" : "✓";
-  const tone = isEpic ? "epic" : isStory ? "story" : "subtask";
+  const label = isEpic
+    ? "EPIC"
+    : isFeature
+      ? "FEATURE"
+      : isStory
+        ? "STORY"
+        : "SUB-TASK";
+  const title = isEpic
+    ? "Create Epic"
+    : isFeature
+      ? "Create Feature"
+      : isStory
+        ? "Create Story"
+        : "Create Sub-task";
+  const icon = isEpic ? "E" : isFeature ? "F" : isStory ? "S" : "✓";
+  const tone = isEpic ? "epic" : isFeature ? "feature" : isStory ? "story" : "subtask";
 
   return (
     <aside className="smart-node-panel" onDoubleClick={(event) => event.stopPropagation()}>
@@ -1038,7 +1337,7 @@ function CreateWorkItemPanel({
         {!isEpic && (
           <div className="smart-field">
             <label>
-              Parent {isStory ? "Epic" : "Story"}
+              Parent {isFeature ? "Epic" : isStory ? "Feature" : "Story"}
               <span className="smart-required">*</span>
             </label>
 
@@ -1050,7 +1349,7 @@ function CreateWorkItemPanel({
               }}
             >
               <option value="">
-                Select {isStory ? "an Epic" : "a Story"}...
+                Select {isFeature ? "an Epic" : isStory ? "a Feature" : "a Story"}...
               </option>
               {parentOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -1068,9 +1367,11 @@ function CreateWorkItemPanel({
 
             {parentOptions.length === 0 && (
               <div className="smart-validation">
-                {isStory
-                  ? "Create an Epic first. A Story must belong to an Epic."
-                  : "Create a Story first. A Sub-task must belong to a Story."}
+                {isFeature
+                  ? "Create an Epic first. A Feature must belong to an Epic."
+                  : isStory
+                    ? "Create a Feature first. A Story should belong to a Feature."
+                    : "Create a Story first. A Sub-task must belong to a Story."}
               </div>
             )}
           </div>
@@ -1090,9 +1391,11 @@ function CreateWorkItemPanel({
             placeholder={
               isEpic
                 ? "e.g. Customer onboarding modernization"
-                : isStory
-                  ? "e.g. Implement secure login flow"
-                  : "e.g. Add API validation"
+                : isFeature
+                  ? "e.g. Identity and access enablement"
+                  : isStory
+                    ? "e.g. Implement secure login flow"
+                    : "e.g. Add API validation"
             }
             maxLength={120}
             autoFocus
@@ -1187,11 +1490,57 @@ function CreateWorkItemPanel({
             onClick={handleCreate}
             disabled={!canCreate}
           >
-            Add {isEpic ? "Epic" : isStory ? "Story" : "Sub-task"}
+            Add {isEpic ? "Epic" : isFeature ? "Feature" : isStory ? "Story" : "Sub-task"}
           </button>
         </div>
       </div>
     </aside>
+  );
+}
+
+// =========================================================
+// Relationship Selector
+// =========================================================
+
+function RelationshipSelector({ sourceNode, targetNode, onChoose, onCancel }) {
+  const hierarchyAllowed = canCreateHierarchy(sourceNode, targetNode);
+
+  return (
+    <div className="relationship-backdrop" onClick={onCancel}>
+      <div className="relationship-dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="relationship-dialog-header">
+          <div>
+            <span className="relationship-eyebrow">Create relationship</span>
+            <h3>{sourceNode?.data?.summary || "Work item"} → {targetNode?.data?.summary || "Work item"}</h3>
+          </div>
+          <button type="button" className="relationship-close" onClick={onCancel}>×</button>
+        </div>
+
+        <div className="relationship-options">
+          {hierarchyAllowed && (
+            <button type="button" onClick={() => onChoose("hierarchy", "parent_child")}>
+              <strong>Parent / child</strong>
+              <span>Move the target under the source in the backlog hierarchy.</span>
+            </button>
+          )}
+
+          <button type="button" onClick={() => onChoose("dependency", "depends_on")}>
+            <strong>Depends on</strong>
+            <span>The source needs the target to be completed first.</span>
+          </button>
+
+          <button type="button" onClick={() => onChoose("dependency", "blocks")}>
+            <strong>Blocks</strong>
+            <span>The source prevents the target from progressing.</span>
+          </button>
+
+          <button type="button" onClick={() => onChoose("dependency", "relates_to")}>
+            <strong>Relates to</strong>
+            <span>Keep a non-blocking planning relationship between the items.</span>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1201,6 +1550,7 @@ function CreateWorkItemPanel({
 
 const nodeTypes = {
   epic: EpicNode,
+  feature: FeatureNode,
   story: StoryNode,
 };
 
@@ -1303,7 +1653,6 @@ function createSkeletonDiagram() {
       id: storyId,
       type: "story",
       parentId: laneId,
-      extent: "parent",
       position: {
         x: startX,
         y: storiesRowY,
@@ -1372,7 +1721,9 @@ const LANE_GAP_X = 28;
 const LANE_GAP_Y = 28;
 const LANE_PADDING_X = 32;
 const LANE_PADDING_Y = 30;
-const EPIC_TO_STORY_GAP = 60;
+const EPIC_TO_FEATURE_GAP = 48;
+const FEATURE_TO_STORY_GAP = 42;
+const FEATURE_GAP_X = 24;
 const STORY_GAP_X = 24;
 const STORY_GAP_Y = 24;
 const MAX_STORIES_PER_ROW = 3;
@@ -1383,10 +1734,7 @@ function layoutWorkflowNodes(inputNodes, dimensions) {
   }
 
   const viewportWidth = Math.max(Number(dimensions?.width) || 1440, 900);
-  const availableCanvasWidth = Math.max(
-    viewportWidth - LAYOUT_MARGIN_X * 2,
-    STORY_WIDTH + LANE_PADDING_X * 2,
-  );
+  const availableCanvasWidth = Math.max(viewportWidth - LAYOUT_MARGIN_X * 2, 760);
 
   const nodes = inputNodes.map((node) => ({
     ...node,
@@ -1408,21 +1756,15 @@ function layoutWorkflowNodes(inputNodes, dimensions) {
         return null;
       }
 
-      const stories = nodes
-        .filter(
-          (node) => node.type === "story" && node.parentId === group.id,
-        )
-        .sort((a, b) => {
-          const ax = Number(a.position?.x) || 0;
-          const ay = Number(a.position?.y) || 0;
-          const bx = Number(b.position?.x) || 0;
-          const by = Number(b.position?.y) || 0;
-          return ay - by || ax - bx;
-        });
+      const features = nodes.filter(
+        (node) => node.type === "feature" && node.parentId === group.id,
+      );
 
-      // Keep a lane compact enough that multiple Epics can share the same
-      // viewport row, while allowing larger Epics to use up to 3 story columns.
-      const viewportStoryColumns = Math.max(
+      const stories = nodes.filter(
+        (node) => node.type === "story" && node.parentId === group.id,
+      );
+
+      const storyColumns = Math.max(
         1,
         Math.min(
           MAX_STORIES_PER_ROW,
@@ -1433,20 +1775,23 @@ function layoutWorkflowNodes(inputNodes, dimensions) {
         ),
       );
 
-      const storyColumns = Math.max(
-        1,
-        Math.min(stories.length || 1, viewportStoryColumns),
-      );
+      const featureColumns = Math.max(1, Math.min(3, features.length || 1));
+      const visibleStoryColumns = Math.max(1, Math.min(stories.length || 1, storyColumns));
+      const visibleFeatureColumns = Math.max(1, Math.min(features.length || 1, featureColumns));
 
       const storyGridWidth =
-        storyColumns * STORY_WIDTH +
-        Math.max(0, storyColumns - 1) * STORY_GAP_X;
+        visibleStoryColumns * STORY_WIDTH +
+        Math.max(0, visibleStoryColumns - 1) * STORY_GAP_X;
+      const featureGridWidth =
+        visibleFeatureColumns * FEATURE_WIDTH +
+        Math.max(0, visibleFeatureColumns - 1) * FEATURE_GAP_X;
 
       const laneWidth = Math.min(
         availableCanvasWidth,
         Math.max(
           EPIC_WIDTH + LANE_PADDING_X * 2,
           storyGridWidth + LANE_PADDING_X * 2,
+          featureGridWidth + LANE_PADDING_X * 2,
         ),
       );
 
@@ -1454,35 +1799,60 @@ function layoutWorkflowNodes(inputNodes, dimensions) {
         x: (laneWidth - EPIC_WIDTH) / 2,
         y: LANE_PADDING_Y,
       };
+      epic.style = { ...epic.style, width: EPIC_WIDTH, height: EPIC_HEIGHT };
 
-      epic.style = {
-        ...epic.style,
-        width: EPIC_WIDTH,
-        height: EPIC_HEIGHT,
-      };
+      let currentY = LANE_PADDING_Y + EPIC_HEIGHT;
 
-      const storiesStartY =
-        LANE_PADDING_Y + EPIC_HEIGHT + EPIC_TO_STORY_GAP;
+      if (features.length > 0) {
+        currentY += EPIC_TO_FEATURE_GAP;
+        const featureRows = Math.ceil(features.length / featureColumns);
+
+        features.forEach((feature, index) => {
+          const row = Math.floor(index / featureColumns);
+          const column = index % featureColumns;
+          const itemsInRow = Math.min(
+            featureColumns,
+            features.length - row * featureColumns,
+          );
+          const rowWidth =
+            itemsInRow * FEATURE_WIDTH +
+            Math.max(0, itemsInRow - 1) * FEATURE_GAP_X;
+          const rowStartX = (laneWidth - rowWidth) / 2;
+
+          feature.position = {
+            x: rowStartX + column * (FEATURE_WIDTH + FEATURE_GAP_X),
+            y: currentY + row * (FEATURE_HEIGHT + STORY_GAP_Y),
+          };
+          feature.style = {
+            ...feature.style,
+            width: FEATURE_WIDTH,
+            height: FEATURE_HEIGHT,
+          };
+        });
+
+        currentY +=
+          featureRows * FEATURE_HEIGHT +
+          Math.max(0, featureRows - 1) * STORY_GAP_Y +
+          FEATURE_TO_STORY_GAP;
+      } else {
+        currentY += EPIC_TO_FEATURE_GAP;
+      }
 
       const rowHeights = [];
-
       stories.forEach((story, index) => {
         const row = Math.floor(index / storyColumns);
         const storyHeight = Math.max(
           Number(story.style?.height) || STORY_BASE_HEIGHT,
           STORY_BASE_HEIGHT,
         );
-
         rowHeights[row] = Math.max(rowHeights[row] || 0, storyHeight);
       });
 
       const rowOffsets = [];
       let storyRowsHeight = 0;
-
       rowHeights.forEach((height, row) => {
         rowOffsets[row] = storyRowsHeight;
         storyRowsHeight += height;
-
         if (row < rowHeights.length - 1) {
           storyRowsHeight += STORY_GAP_Y;
         }
@@ -1502,9 +1872,8 @@ function layoutWorkflowNodes(inputNodes, dimensions) {
 
         story.position = {
           x: rowStartX + column * (STORY_WIDTH + STORY_GAP_X),
-          y: storiesStartY + (rowOffsets[row] || 0),
+          y: currentY + (rowOffsets[row] || 0),
         };
-
         story.style = {
           ...story.style,
           width: STORY_WIDTH,
@@ -1517,15 +1886,14 @@ function layoutWorkflowNodes(inputNodes, dimensions) {
 
       const laneHeight =
         stories.length > 0
-          ? storiesStartY + storyRowsHeight + LANE_PADDING_Y
-          : LANE_PADDING_Y * 2 + EPIC_HEIGHT;
+          ? currentY + storyRowsHeight + LANE_PADDING_Y
+          : currentY + LANE_PADDING_Y;
 
       group.style = {
         ...group.style,
         width: laneWidth,
-        height: laneHeight,
+        height: Math.max(laneHeight, LANE_PADDING_Y * 2 + EPIC_HEIGHT),
       };
-
       group.data = {
         ...group.data,
         label: epic.data?.summary || group.data?.label || "",
@@ -1534,16 +1902,13 @@ function layoutWorkflowNodes(inputNodes, dimensions) {
       return {
         group,
         width: laneWidth,
-        height: laneHeight,
+        height: group.style.height,
         order: groupOrder.get(group.id) ?? 0,
       };
     })
     .filter(Boolean)
     .sort((a, b) => a.order - b.order);
 
-  // Pack Epic lanes from left to right and wrap only when the next lane
-  // would exceed the current viewport. This removes the large empty space
-  // created by the previous one-lane-per-row layout.
   let cursorX = LAYOUT_MARGIN_X;
   let cursorY = LAYOUT_MARGIN_Y;
   let currentRowHeight = 0;
@@ -1559,11 +1924,7 @@ function layoutWorkflowNodes(inputNodes, dimensions) {
       currentRowHeight = 0;
     }
 
-    lane.group.position = {
-      x: cursorX,
-      y: cursorY,
-    };
-
+    lane.group.position = { x: cursorX, y: cursorY };
     cursorX += lane.width + LANE_GAP_X;
     currentRowHeight = Math.max(currentRowHeight, lane.height);
   });
@@ -1571,33 +1932,140 @@ function layoutWorkflowNodes(inputNodes, dimensions) {
   return nodes;
 }
 
+// Reflow only the lanes whose hierarchy changed. This keeps the overall
+// canvas stable while snapping children back into a clean grid inside their
+// Epic lane. Lane positions and existing lane widths are preserved so a
+// re-parent does not make the whole board jump or visually drift.
+function relayoutAffectedLanes(inputNodes, groupIds, dimensions) {
+  if (!Array.isArray(inputNodes) || inputNodes.length === 0) {
+    return inputNodes;
+  }
+
+  const targetIds = [...new Set((groupIds || []).filter(Boolean))];
+  if (targetIds.length === 0) return inputNodes;
+
+  let result = inputNodes.map((node) => ({
+    ...node,
+    position: node.position ? { ...node.position } : { x: 0, y: 0 },
+    style: node.style ? { ...node.style } : {},
+    data: node.data ? { ...node.data } : {},
+  }));
+
+  targetIds.forEach((groupId) => {
+    const originalGroup = result.find(
+      (node) => node.id === groupId && node.type === "group",
+    );
+    if (!originalGroup) return;
+
+    const laneNodes = result.filter(
+      (node) => node.id === groupId || node.parentId === groupId,
+    );
+    if (laneNodes.length <= 1) return;
+
+    const laidOutLane = layoutWorkflowNodes(laneNodes, dimensions);
+    const laidOutGroup = laidOutLane.find((node) => node.id === groupId);
+    if (!laidOutGroup) return;
+
+    const laidOutById = new Map(laidOutLane.map((node) => [node.id, node]));
+    const oldWidth = Number(originalGroup.style?.width) || 0;
+    const newWidth = Number(laidOutGroup.style?.width) || oldWidth;
+    const stableWidth = Math.max(oldWidth, newWidth);
+    const xOffset = Math.max(0, (stableWidth - newWidth) / 2);
+
+    result = result.map((node) => {
+      const laidOutNode = laidOutById.get(node.id);
+      if (!laidOutNode) return node;
+
+      if (node.id === groupId) {
+        return {
+          ...node,
+          // Never move the Epic lane itself during a child re-parent.
+          position: { ...originalGroup.position },
+          style: {
+            ...node.style,
+            ...laidOutGroup.style,
+            width: stableWidth,
+          },
+          data: { ...node.data, ...laidOutGroup.data },
+        };
+      }
+
+      return {
+        ...node,
+        position: {
+          ...laidOutNode.position,
+          x: (Number(laidOutNode.position?.x) || 0) + xOffset,
+        },
+        style: { ...node.style, ...laidOutNode.style },
+      };
+    });
+  });
+
+  return result;
+}
+
 // =========================================================
 // Create Real Diagram
 // =========================================================
 
+function getReadinessIssues(issue, type) {
+  const issues = [];
+  const points = issue.story_points ?? issue.storyPoints;
+  const ac = issue.acceptance_criteria ?? issue.acceptanceCriteria ?? [];
+  const hasAc = Array.isArray(ac) ? ac.length > 0 : Boolean(ac);
+  const hasDoD = issue.hasDoD ?? issue.has_dod ?? issue.HasDoD;
+
+  if (["Story", "Task"].includes(type) && (points == null || Number(points) <= 0)) {
+    issues.push("Missing estimate");
+  }
+  if (["Story", "Task"].includes(type) && !hasAc) {
+    issues.push("Missing AC");
+  }
+  if (["Story", "Task"].includes(type) && !hasDoD) {
+    issues.push("Missing DoD");
+  }
+  if (type === "Epic" && !(issue.sad_section_id || issue.sadSectionId || issue.SADSectionID)) {
+    issues.push("Missing S-AD");
+  }
+
+  const importedWarnings = Array.isArray(issue.healthWarnings) ? issue.healthWarnings : [];
+  importedWarnings.forEach((warning) => {
+    if (warning && !issues.includes(warning)) issues.push(warning);
+  });
+
+  return issues;
+}
+
 function createDiagram(issuesData, onUpdateNodeData, edgeHandlers, dimensions) {
   const epics = issuesData.filter((issue) => issue.issue_type === "Epic");
-
   const nodes = [];
   const edges = [];
 
   epics.forEach((epic, epicIndex) => {
-    const laneId = `lane-${epicIndex}`;
-    const epicId = `epic-${epicIndex}`;
-
-    const stories = issuesData.filter(
-      (issue) => issue.issue_type === "Story" && issue.parent === epic.summary,
+    const laneId = epic.laneId || `lane-${epicIndex}`;
+    const epicId = epic.nodeId || `epic-${epicIndex}`;
+    const features = issuesData.filter(
+      (issue) => issue.issue_type === "Feature" && issue.parent === epic.summary,
     );
+    const featureTitles = new Set(features.map((feature) => feature.summary));
+    const directStories = issuesData.filter(
+      (issue) =>
+        ["Story", "Task"].includes(issue.issue_type) &&
+        issue.parent === epic.summary,
+    );
+    const featureStories = issuesData.filter(
+      (issue) =>
+        ["Story", "Task"].includes(issue.issue_type) &&
+        featureTitles.has(issue.parent),
+    );
+    const laneStories = [...directStories, ...featureStories];
 
     nodes.push({
       id: laneId,
       type: "group",
       position: { x: 0, y: 0 },
       data: { label: epic.summary },
-      style: {
-        width: EPIC_WIDTH + LANE_PADDING_X * 2,
-        height: EPIC_HEIGHT + LANE_PADDING_Y * 2,
-      },
+      style: { width: 900, height: 600 },
       draggable: false,
       selectable: false,
     });
@@ -1606,77 +2074,171 @@ function createDiagram(issuesData, onUpdateNodeData, edgeHandlers, dimensions) {
       id: epicId,
       type: "epic",
       parentId: laneId,
-      extent: "parent",
       position: { x: LANE_PADDING_X, y: LANE_PADDING_Y },
-      style: {
-        width: EPIC_WIDTH,
-        height: EPIC_HEIGHT,
-      },
+      style: { width: EPIC_WIDTH, height: EPIC_HEIGHT },
       data: {
         issue_type: "Epic",
         summary: epic.summary,
         description: epic.description,
-        storyCount: stories.length,
+        storyCount: laneStories.length,
         originalIssue: epic,
         onUpdate: onUpdateNodeData,
-        jiraKey: epic.jiraKey || null,
-        syncStatus: epic.jiraKey ? "created" : "idle",
+        jiraKey: epic.jiraKey || epic.jira_key || null,
+        syncStatus: epic.jiraKey || epic.jira_key ? "created" : "idle",
         jiraError: null,
+        changeState:
+          epic.changeState || (epic.jiraKey || epic.jira_key ? "existing" : "new"),
+        sadSectionId:
+          epic.sad_section_id || epic.sadSectionId || epic.SADSectionID || "",
+        priority: epic.priority || "Medium",
+        status: epic.status || "To Do",
+        sprint: epic.sprint || epic.sprintId || "",
+        assignee: epic.assignee || "",
+        hasDoD: Boolean(epic.hasDoD ?? epic.has_dod),
+        readinessIssues: getReadinessIssues(epic, "Epic"),
+        sourceOrigin: epic.sourceOrigin || "ai",
+        sadSectionTitle: epic.sadSectionTitle || "",
+        layer: epic.layer || "",
       },
     });
 
-    stories.forEach((story, storyIndex) => {
-      const tasks = issuesData.filter(
+    const featureNodeBySummary = new Map();
+
+    features.forEach((feature, featureIndex) => {
+      const featureId = feature.nodeId || `${epicId}-feature-${featureIndex}`;
+      const children = issuesData.filter(
         (issue) =>
-          ["Task", "Sub-task", "Subtask"].includes(issue.issue_type) &&
-          issue.parent === story.summary,
+          ["Story", "Task"].includes(issue.issue_type) &&
+          issue.parent === feature.summary,
       );
 
-      const storyId = `${epicId}-story-${storyIndex}`;
-      const storyHeight =
-        STORY_BASE_HEIGHT + tasks.length * STORY_TASK_HEIGHT;
+      featureNodeBySummary.set(feature.summary, featureId);
+
+      nodes.push({
+        id: featureId,
+        type: "feature",
+        parentId: laneId,
+          position: { x: LANE_PADDING_X, y: 0 },
+        style: { width: FEATURE_WIDTH, height: FEATURE_HEIGHT },
+        data: {
+          issue_type: "Feature",
+          summary: feature.summary,
+          description: feature.description || "",
+          childCount: children.length,
+          originalIssue: feature,
+          onUpdate: onUpdateNodeData,
+          jiraKey: feature.jiraKey || feature.jira_key || null,
+          syncStatus: feature.jiraKey || feature.jira_key ? "created" : "idle",
+          jiraError: null,
+          changeState:
+            feature.changeState ||
+            (feature.jiraKey || feature.jira_key ? "existing" : "new"),
+          parentNodeId: epicId,
+          sadSectionId:
+            feature.sad_section_id ||
+            feature.sadSectionId ||
+            epic.sad_section_id ||
+            epic.sadSectionId ||
+            "",
+          priority: feature.priority || "Medium",
+          status: feature.status || "To Do",
+          sprint: feature.sprint || feature.sprintId || "",
+          assignee: feature.assignee || "",
+          hasDoD: Boolean(feature.hasDoD ?? feature.has_dod),
+          readinessIssues: getReadinessIssues(feature, "Feature"),
+          sourceOrigin: feature.sourceOrigin || "ai",
+          sadSectionTitle: feature.sadSectionTitle || "",
+          layer: feature.layer || "",
+        },
+      });
+
+      edges.push({
+        id: `${epicId}-${featureId}`,
+        source: epicId,
+        sourceHandle: "bottom",
+        target: featureId,
+        targetHandle: "top",
+        type: "customEdge",
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#334155" },
+        data: {
+          edgeType: "primary",
+          animated: false,
+          relationship: "hierarchy",
+          ...edgeHandlers,
+        },
+      });
+    });
+
+    laneStories.forEach((story, storyIndex) => {
+      const tasks = issuesData.filter(
+        (issue) =>
+          ["Sub-task", "Subtask"].includes(issue.issue_type) &&
+          issue.parent === story.summary,
+      );
+      const storyId = story.nodeId || `${epicId}-story-${storyIndex}`;
+      const storyHeight = STORY_BASE_HEIGHT + tasks.length * STORY_TASK_HEIGHT;
+      const parentFeatureId = featureNodeBySummary.get(story.parent);
+      const parentNodeId = parentFeatureId || epicId;
 
       nodes.push({
         id: storyId,
         type: "story",
         parentId: laneId,
-        extent: "parent",
-        position: { x: LANE_PADDING_X, y: 0 },
-        style: {
-          width: STORY_WIDTH,
-          height: storyHeight,
-        },
+          position: { x: LANE_PADDING_X, y: 0 },
+        style: { width: STORY_WIDTH, height: storyHeight },
         data: {
-          issue_type: "Story",
+          issue_type: story.issue_type || "Story",
           summary: story.summary,
-          description: story.description,
-          storyPoints: story.story_points,
+          description: story.description || "",
+          storyPoints: story.story_points ?? story.storyPoints,
           tasks,
           dependencies: story.dependencies || [],
-          acceptanceCriteria: story.acceptance_criteria || [],
+          acceptanceCriteria:
+            story.acceptance_criteria || story.acceptanceCriteria || [],
           originalIssue: story,
           onUpdate: onUpdateNodeData,
-          jiraKey: story.jiraKey || null,
-          syncStatus: story.jiraKey ? "created" : "idle",
+          jiraKey: story.jiraKey || story.jira_key || null,
+          syncStatus: story.jiraKey || story.jira_key ? "created" : "idle",
           jiraError: null,
+          changeState:
+            story.changeState ||
+            (story.jiraKey || story.jira_key ? "existing" : "new"),
+          parentNodeId,
+          parentSummary: story.parent,
+          sadSectionId:
+            story.sad_section_id ||
+            story.sadSectionId ||
+            epic.sad_section_id ||
+            epic.sadSectionId ||
+            "",
+          priority: story.priority || "Medium",
+          status: story.status || "To Do",
+          sprint: story.sprint || story.sprintId || "",
+          assignee: story.assignee || "",
+          hasDoD: Boolean(story.hasDoD ?? story.has_dod),
+          readinessIssues: getReadinessIssues(
+            story,
+            story.issue_type || "Story",
+          ),
+          sourceOrigin: story.sourceOrigin || "ai",
+          sadSectionTitle: story.sadSectionTitle || "",
+          layer: story.layer || "",
+          originalParentId: story.originalParentId || null,
         },
       });
 
       edges.push({
-        id: `${epicId}-${storyId}`,
-        source: epicId,
+        id: `${parentNodeId}-${storyId}`,
+        source: parentNodeId,
         sourceHandle: "bottom",
         target: storyId,
         targetHandle: "top",
         type: "customEdge",
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: "#334155",
-        },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#334155" },
         data: {
           edgeType: "primary",
-          animated: true,
-          relationship: "workflow",
+          animated: false,
+          relationship: "hierarchy",
           ...edgeHandlers,
         },
       });
@@ -1695,85 +2257,72 @@ function createDiagram(issuesData, onUpdateNodeData, edgeHandlers, dimensions) {
 
 function convertFlowToIssues(nodes, originalIssues) {
   const result = [];
-
   const epicNodes = nodes.filter((node) => node.type === "epic");
-
+  const featureNodes = nodes.filter((node) => node.type === "feature");
   const storyNodes = nodes.filter((node) => node.type === "story");
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
 
-  // -------------------------------------------------------
-  // EPICS
-  // -------------------------------------------------------
+  const commonFields = (node, original) => ({
+    ...original,
+    issue_type: node.data.issue_type || original.issue_type || "Story",
+    summary: node.data.summary,
+    description: node.data.description || "",
+    nodeId: node.id,
+    jiraKey:
+      node.data.jiraKey || original.jiraKey || original.jira_key || null,
+    changeState:
+      node.data.changeState ||
+      (node.data.jiraKey || original.jiraKey || original.jira_key
+        ? "existing"
+        : "new"),
+    priority: node.data.priority || original.priority || "Medium",
+    status: node.data.status || original.status || "To Do",
+    sprint: node.data.sprint || original.sprint || original.sprintId || "",
+    assignee: node.data.assignee || original.assignee || "",
+    sad_section_id:
+      node.data.sadSectionId ||
+      original.sad_section_id ||
+      original.sadSectionId ||
+      "",
+    hasDoD: Boolean(node.data.hasDoD),
+  });
 
   epicNodes.forEach((node) => {
+    result.push(commonFields(node, node.data.originalIssue || {}));
+  });
+
+  featureNodes.forEach((node) => {
     const original = node.data.originalIssue || {};
+    const parentNode = nodeById.get(node.data.parentNodeId);
+    const sameLaneEpic = epicNodes.find((epic) => epic.parentId === node.parentId);
+    const parent =
+      parentNode?.data?.summary || original.parent || sameLaneEpic?.data.summary || "";
 
     result.push({
-      ...original,
-
-      issue_type: "Epic",
-
-      summary: node.data.summary,
-
-      description: node.data.description || "",
-
-      nodeId: node.id,
-
-      jiraKey:
-        node.data.jiraKey ||
-        original.jiraKey ||
-        null,
-
+      ...commonFields(node, original),
+      issue_type: "Feature",
+      parent,
     });
   });
 
-  // -------------------------------------------------------
-  // STORIES + TASKS
-  // -------------------------------------------------------
-
   storyNodes.forEach((node) => {
     const original = node.data.originalIssue || {};
-
-    const storySummary = node.data.summary;
-
-    let parent = original.parent;
-
-    const epicNode = epicNodes.find((epic) => {
-      const originalEpic = epic.data.originalIssue || {};
-
-      return originalEpic.summary === parent;
-    });
-
-    if (epicNode) {
-      parent = epicNode.data.summary;
-    }
+    const parentNode = nodeById.get(node.data.parentNodeId);
+    const sameLaneEpic = epicNodes.find((epic) => epic.parentId === node.parentId);
+    const parent =
+      parentNode?.data?.summary || original.parent || sameLaneEpic?.data.summary || "";
 
     const storyIssue = {
-      ...original,
-
-      issue_type: "Story",
-
-      summary: storySummary,
-
-      description: node.data.description || "",
-
-      nodeId: node.id,
-
-      jiraKey:
-        node.data.jiraKey ||
-        original.jiraKey ||
-        null,
-
+      ...commonFields(node, original),
+      issue_type: node.data.issue_type || "Story",
       story_points:
         node.data.storyPoints !== "" && node.data.storyPoints != null
           ? Number(node.data.storyPoints)
           : null,
-
       parent,
-
       dependencies: Array.isArray(node.data.dependencies)
         ? [...node.data.dependencies]
         : [],
-
       acceptance_criteria: Array.isArray(node.data.acceptanceCriteria)
         ? [...node.data.acceptanceCriteria]
         : [],
@@ -1781,53 +2330,255 @@ function convertFlowToIssues(nodes, originalIssues) {
 
     result.push(storyIssue);
 
-    // ---------------------------------------------------
-    // TASKS
-    // ---------------------------------------------------
-
-    const tasks = node.data.tasks || [];
-
-    tasks.forEach((task, taskIndex) => {
-      const originalTask = {
-        ...task,
-      };
-
+    const tasks = Array.isArray(node.data.tasks) ? node.data.tasks : [];
+    tasks.forEach((task) => {
       result.push({
-        ...originalTask,
-
-        issue_type: "Sub-task",
-
-        summary: task.summary || "",
-
-        description: task.description || "",
-
-        parent: storySummary,
-
-        nodeId: task.nodeId || `${node.id}-task-${taskIndex}`,
-
-        jiraKey: task.jiraKey || null,
+        ...task,
+        issue_type: task.issue_type || "Sub-task",
+        parent: node.data.summary,
       });
     });
   });
 
-  // -------------------------------------------------------
-  // Preserve future issue types
-  // -------------------------------------------------------
-
-  originalIssues
-    .filter((issue) => !["Epic", "Story", "Task", "Sub-task", "Subtask"].includes(issue.issue_type))
-    .forEach((issue) => {
-      result.push({
-        ...issue,
-      });
-    });
-
   return result;
 }
 
-// =========================================================
-// Flow Canvas
-// =========================================================
+
+function BoardWorkspacePanel({
+  summary,
+  sourceName,
+  search,
+  onSearch,
+  typeFilter,
+  onTypeFilter,
+  stateFilter,
+  onStateFilter,
+  showDependencies,
+  onToggleDependencies,
+  onLoadDemo,
+  onImport,
+  importBusy,
+  importMessage,
+  onOpenHealth,
+  onOpenSprints,
+  onOpenSad,
+  onOpenChanges,
+  changeRequestCount,
+  onFit,
+  fileInputRef,
+}) {
+  return (
+    <div className="foreman-board-panel nodrag nopan">
+      <div className="foreman-board-panel__header">
+        <div>
+          <div className="foreman-board-eyebrow">EXISTING BOARD</div>
+          <strong>{sourceName || "Canvas workspace"}</strong>
+        </div>
+        {summary && <span className="foreman-board-count">{summary.total} tickets</span>}
+      </div>
+
+      <div className="foreman-board-actions">
+        <button type="button" onClick={onLoadDemo}>Load Excel demo</button>
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={importBusy}>
+          {importBusy ? "Importing…" : "Import Excel"}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          hidden
+          onChange={onImport}
+        />
+      </div>
+
+      {importMessage && <div className="foreman-import-message">{importMessage}</div>}
+
+      {summary && (
+        <div className="foreman-summary-grid">
+          <div><strong>{summary.epics}</strong><span>Epics</span></div>
+          <div><strong>{summary.features}</strong><span>Features</span></div>
+          <div><strong>{summary.stories}</strong><span>Stories</span></div>
+          <div><strong>{summary.tasks}</strong><span>Tasks</span></div>
+        </div>
+      )}
+
+      <label className="foreman-search-wrap">
+        <span>⌕</span>
+        <input value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search ticket, title, S-AD…" />
+      </label>
+
+      <div className="foreman-filter-row">
+        <select value={typeFilter} onChange={(e) => onTypeFilter(e.target.value)}>
+          <option value="all">All types</option>
+          <option value="epic">Epic</option>
+          <option value="feature">Feature</option>
+          <option value="story">Story / Task</option>
+        </select>
+        <select value={stateFilter} onChange={(e) => onStateFilter(e.target.value)}>
+          <option value="all">All states</option>
+          <option value="existing">Existing</option>
+          <option value="modified">Modified</option>
+          <option value="new">New</option>
+          <option value="warning">Warnings</option>
+        </select>
+      </div>
+
+      <div className="foreman-board-secondary-actions">
+        <button type="button" className={showDependencies ? "active" : ""} onClick={onToggleDependencies}>
+          Dependencies {showDependencies ? "on" : "off"}
+        </button>
+        <button type="button" onClick={onFit}>Fit board</button>
+      </div>
+
+      {summary && (
+        <div className="foreman-board-links">
+          <button type="button" onClick={onOpenHealth}>
+            Health <span className={summary.errors ? "health-badge error" : "health-badge"}>{summary.findings}</span>
+          </button>
+          <button type="button" onClick={onOpenSprints}>Sprint capacity</button>
+          <button type="button" onClick={onOpenSad}>S-AD map</button>
+          <button type="button" onClick={onOpenChanges}>Changes <span className="health-badge">{changeRequestCount || 0}</span></button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HealthDrawer({ analysis, onClose, onSelectTicket }) {
+  const [category, setCategory] = useState("all");
+  const findings = analysis?.findings || [];
+  const filtered = category === "all" ? findings : findings.filter((item) => item.category === category);
+  const categories = ["all", "readiness", "hierarchy", "traceability", "dependency", "capacity"];
+
+  return (
+    <div className="foreman-drawer-backdrop" onClick={onClose}>
+      <aside className="foreman-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="foreman-drawer-header">
+          <div>
+            <div className="foreman-board-eyebrow">FOREMAN HEALTH</div>
+            <h3>{findings.length} findings</h3>
+          </div>
+          <button type="button" className="foreman-drawer-close" onClick={onClose}>×</button>
+        </div>
+        <div className="foreman-health-filters">
+          {categories.map((item) => (
+            <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>
+              {item === "all" ? "All" : item}
+            </button>
+          ))}
+        </div>
+        <div className="foreman-health-list">
+          {filtered.map((finding, index) => (
+            <button
+              key={`${finding.code}-${finding.ticketId || finding.sprintId || index}`}
+              type="button"
+              className={`foreman-health-card severity-${finding.severity || "warning"}`}
+              onClick={() => finding.ticketId && onSelectTicket(finding.ticketId)}
+            >
+              <div className="foreman-health-card-title">
+                <span>{finding.severity === "error" ? "!" : "⚠"}</span>
+                <strong>{finding.title}</strong>
+              </div>
+              <p>{finding.detail}</p>
+              {(finding.ticketId || finding.sprintId) && (
+                <small>{finding.ticketId || finding.sprintId}{finding.ticketId ? " · Click to locate" : ""}</small>
+              )}
+            </button>
+          ))}
+          {!filtered.length && <div className="foreman-empty-state">No findings in this category.</div>}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function SprintCapacityDrawer({ dataset, onClose }) {
+  const sprints = dataset?.sprints || [];
+  return (
+    <div className="foreman-drawer-backdrop" onClick={onClose}>
+      <aside className="foreman-drawer foreman-sprint-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="foreman-drawer-header">
+          <div>
+            <div className="foreman-board-eyebrow">CAPACITY VIEW</div>
+            <h3>Sprint load</h3>
+          </div>
+          <button type="button" className="foreman-drawer-close" onClick={onClose}>×</button>
+        </div>
+        <div className="foreman-sprint-list">
+          {sprints.map((sprint) => {
+            const capacity = Number(sprint.PlannedCapacityPts || 0);
+            const committed = Number(sprint.CommittedPts || 0);
+            const pct = capacity > 0 ? Math.round((committed / capacity) * 100) : 0;
+            return (
+              <div className={`foreman-sprint-card ${pct > 100 ? "over" : ""}`} key={sprint.SprintID}>
+                <div className="foreman-sprint-card-head">
+                  <div><strong>{sprint.SprintName}</strong><small>{sprint.Status}</small></div>
+                  <span>{committed}/{capacity} pts</span>
+                </div>
+                <div className="foreman-capacity-track"><div style={{ width: `${Math.min(pct, 100)}%` }} /></div>
+                <div className="foreman-sprint-meta"><span>{sprint.StartDate}</span><span>{pct}% loaded</span></div>
+              </div>
+            );
+          })}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+
+function SadTraceabilityDrawer({ dataset, onClose, onSelectTicket }) {
+  const backlog = dataset?.backlog || [];
+  const sections = dataset?.sadSections || [];
+  return (
+    <div className="foreman-drawer-backdrop" onClick={onClose}>
+      <aside className="foreman-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="foreman-drawer-header">
+          <div><div className="foreman-board-eyebrow">TRACEABILITY</div><h3>S-AD coverage</h3></div>
+          <button type="button" className="foreman-drawer-close" onClick={onClose}>×</button>
+        </div>
+        <div className="foreman-sad-list">
+          {sections.map((section) => {
+            const linked = backlog.filter((item) => item.SADSectionID === section.SectionID);
+            const firstEpic = linked.find((item) => item.Type === "Epic");
+            return (
+              <button key={section.SectionID} type="button" className="foreman-sad-card" onClick={() => firstEpic && onSelectTicket(firstEpic.TicketID)}>
+                <div><strong>{section.SectionID}</strong><span>{section.ArchitectureLayer}</span></div>
+                <h4>{section.SectionNumber} · {section.SectionTitle}</h4>
+                <p>{section.Summary}</p>
+                <small>{linked.length} linked backlog items{firstEpic ? " · Open Epic" : ""}</small>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function ChangeRequestDrawer({ dataset, onClose }) {
+  const changes = dataset?.changeRequests || [];
+  return (
+    <div className="foreman-drawer-backdrop" onClick={onClose}>
+      <aside className="foreman-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="foreman-drawer-header">
+          <div><div className="foreman-board-eyebrow">MID-SPRINT INTAKE</div><h3>{changes.length} change requests</h3></div>
+          <button type="button" className="foreman-drawer-close" onClick={onClose}>×</button>
+        </div>
+        <div className="foreman-change-list">
+          {changes.map((change) => (
+            <div className="foreman-change-card" key={change.CRID}>
+              <div className="foreman-change-card-head"><strong>{change.CRID}</strong><span>{change.Status}</span></div>
+              <p>{change.RawText}</p>
+              <div className="foreman-change-meta"><span>{change.Source}</span><span>{change.SuggestedType}</span><span>{change.TargetSprintID || "Unplanned"}</span></div>
+              {change.PotentialDuplicateOf && <div className="foreman-duplicate-hint">Dataset reference: potential overlap requires semantic review.</div>}
+            </div>
+          ))}
+        </div>
+      </aside>
+    </div>
+  );
+}
 
 function FlowCanvas() {
   const navigate = useNavigate();
@@ -1865,6 +2616,28 @@ function FlowCanvas() {
 
   const [createDefaultParentId, setCreateDefaultParentId] = useState("");
 
+  const [pendingConnection, setPendingConnection] = useState(null);
+
+  const [undoSnapshot, setUndoSnapshot] = useState(null);
+
+  const [canvasNotice, setCanvasNotice] = useState("");
+
+  const [boardDataset, setBoardDataset] = useState(null);
+  const [boardAnalysis, setBoardAnalysis] = useState(null);
+  const [boardSummary, setBoardSummary] = useState(null);
+  const [boardSourceName, setBoardSourceName] = useState("");
+  const [boardSearch, setBoardSearch] = useState("");
+  const [boardTypeFilter, setBoardTypeFilter] = useState("all");
+  const [boardStateFilter, setBoardStateFilter] = useState("all");
+  const [showDependencies, setShowDependencies] = useState(true);
+  const [showHealthDrawer, setShowHealthDrawer] = useState(false);
+  const [showSprintDrawer, setShowSprintDrawer] = useState(false);
+  const [showSadDrawer, setShowSadDrawer] = useState(false);
+  const [showChangeDrawer, setShowChangeDrawer] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const boardFileInputRef = useRef(null);
+
   // Clarification round-trip: when the backend needs more detail
   // before it can build a dependable plan.
   const [clarification, setClarification] = useState(null);
@@ -1882,7 +2655,34 @@ function FlowCanvas() {
     height: window.innerHeight,
   });
 
-  const { fitView } = useReactFlow();
+  const { fitView, screenToFlowPosition } = useReactFlow();
+
+  const rememberForUndo = useCallback(
+    (label) => {
+      setUndoSnapshot({
+        label,
+        nodes: nodes.map((node) => ({
+          ...node,
+          position: { ...node.position },
+          style: { ...(node.style || {}) },
+          data: { ...(node.data || {}) },
+        })),
+        edges: edges.map((edge) => ({
+          ...edge,
+          data: { ...(edge.data || {}) },
+        })),
+      });
+    },
+    [nodes, edges],
+  );
+
+  const handleUndo = useCallback(() => {
+    if (!undoSnapshot) return;
+    setNodes(undoSnapshot.nodes);
+    setEdges(undoSnapshot.edges);
+    setCanvasNotice(`Undid: ${undoSnapshot.label}`);
+    setUndoSnapshot(null);
+  }, [undoSnapshot, setNodes, setEdges]);
 
   // =======================================================
   // Resize
@@ -2006,6 +2806,30 @@ function FlowCanvas() {
             data: {
               ...node.data,
               ...updatedFields,
+              changeState:
+                node.data.jiraKey || node.data.changeState === "existing"
+                  ? "modified"
+                  : updatedFields.changeState || node.data.changeState || "new",
+              readinessIssues: getReadinessIssues(
+                {
+                  ...node.data.originalIssue,
+                  ...node.data,
+                  ...updatedFields,
+                  story_points:
+                    updatedFields.storyPoints ?? node.data.storyPoints,
+                  acceptance_criteria:
+                    updatedFields.acceptanceCriteria ?? node.data.acceptanceCriteria,
+                  hasDoD: updatedFields.hasDoD ?? node.data.hasDoD,
+                  sad_section_id:
+                    updatedFields.sadSectionId ?? node.data.sadSectionId,
+                },
+                node.data.issue_type ||
+                  (node.type === "epic"
+                    ? "Epic"
+                    : node.type === "feature"
+                      ? "Feature"
+                      : "Story"),
+              ),
             },
           };
         });
@@ -2016,12 +2840,415 @@ function FlowCanvas() {
     [setNodes, dimensions],
   );
 
+  const loadBoardDataset = useCallback(
+    (dataset) => {
+      const analysis = analyzeForemanDataset(dataset);
+      const summary = getDatasetSummary(dataset, analysis);
+      const importedIssues = buildCanvasIssues(dataset, analysis);
+      const diagram = createDiagram(
+        importedIssues,
+        handleUpdateNodeData,
+        edgeHandlers,
+        dimensions,
+      );
+
+      const dependencyEdges = analysis.validDependencies
+        .filter((dep) => diagram.nodes.some((node) => node.id === dep.from) && diagram.nodes.some((node) => node.id === dep.to))
+        .map((dep) => ({
+          id: `dataset-${dep.DependencyID}`,
+          source: dep.from,
+          sourceHandle: "bottom",
+          target: dep.to,
+          targetHandle: "top",
+          type: "customEdge",
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#64748B" },
+          data: {
+            edgeType: "secondary",
+            animated: false,
+            relationship: "dependency",
+            dependencyType: String(dep.DependencyType || "requires").toLowerCase(),
+            note: dep.Notes || "",
+            ...edgeHandlers,
+          },
+        }));
+
+      setBoardDataset(dataset);
+      setBoardAnalysis(analysis);
+      setBoardSummary(summary);
+      setBoardSourceName(dataset.source || "Imported Excel board");
+      setIssuesData(importedIssues);
+      setNodes(diagram.nodes);
+      setEdges([...diagram.edges, ...dependencyEdges]);
+      setSelectedNodeId(null);
+      setClarification(null);
+      setError("");
+      setLoading(false);
+      setImportMessage(`Loaded ${summary.total} tickets · ${summary.findings} health findings`);
+
+      setTimeout(() => {
+        fitView({ padding: 0.04, duration: 500 });
+      }, 100);
+    },
+    [dimensions, edgeHandlers, fitView, handleUpdateNodeData, setEdges, setNodes],
+  );
+
+  const handleLoadBundledDataset = useCallback(() => {
+    try {
+      const dataset = getBundledForemanDataset();
+      loadBoardDataset(dataset);
+      setCanvasNotice("Existing Excel backlog loaded into Canvas.");
+    } catch (err) {
+      setImportMessage(err.message || "Could not load bundled dataset.");
+    }
+  }, [loadBoardDataset]);
+
+  const handleExcelImport = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportBusy(true);
+    setImportMessage(`Reading ${file.name}…`);
+    try {
+      const dataset = await parseForemanWorkbook(file);
+      loadBoardDataset(dataset);
+      setCanvasNotice(`${file.name} loaded into Foreman.`);
+    } catch (err) {
+      console.error("Excel import failed", err);
+      setImportMessage(`Import failed: ${err.message || "Invalid workbook"}`);
+    } finally {
+      setImportBusy(false);
+      event.target.value = "";
+    }
+  }, [loadBoardDataset]);
+
+  const focusBoardTicket = useCallback((ticketId) => {
+    const target = nodes.find((node) => node.id === ticketId);
+    if (!target) {
+      setCanvasNotice(`Ticket ${ticketId} is not currently visible.`);
+      return;
+    }
+    setSelectedNodeId(ticketId);
+    setShowHealthDrawer(false);
+    requestAnimationFrame(() => fitView({ nodes: [target], padding: 0.5, duration: 450 }));
+  }, [nodes, fitView]);
+
+  const displayedNodes = useMemo(() => {
+    const query = boardSearch.trim().toLowerCase();
+    return nodes.map((node) => {
+      if (node.type === "group") return node;
+      const matchesType = boardTypeFilter === "all" || node.type === boardTypeFilter;
+      const state = node.data?.changeState || (node.data?.jiraKey ? "existing" : "new");
+      const hasWarning = (node.data?.readinessIssues || []).length > 0;
+      const matchesState =
+        boardStateFilter === "all" ||
+        (boardStateFilter === "warning" ? hasWarning : state === boardStateFilter);
+      const haystack = [
+        node.id,
+        node.data?.jiraKey,
+        node.data?.summary,
+        node.data?.sadSectionId,
+        node.data?.assignee,
+        node.data?.sprint,
+      ].filter(Boolean).join(" ").toLowerCase();
+      const matchesSearch = !query || haystack.includes(query);
+      const match = matchesType && matchesState && matchesSearch;
+      return {
+        ...node,
+        style: {
+          ...(node.style || {}),
+          opacity: match ? 1 : 0.16,
+          transition: "opacity 160ms ease",
+        },
+      };
+    });
+  }, [nodes, boardSearch, boardTypeFilter, boardStateFilter]);
+
+  const displayedEdges = useMemo(
+    () => showDependencies ? edges : edges.filter((edge) => edge.data?.relationship !== "dependency"),
+    [edges, showDependencies],
+  );
+
   // Keep the workflow packed when the browser is resized.
   useEffect(() => {
     setNodes((currentNodes) =>
       layoutWorkflowNodes(currentNodes, dimensions),
     );
   }, [dimensions.width, dimensions.height, setNodes]);
+
+  // =======================================================
+  // Hierarchy re-parenting
+  // =======================================================
+
+  const reparentWorkItem = useCallback(
+    (childId, newParentId, reason = "Move work item") => {
+      const child = nodes.find((node) => node.id === childId);
+      const newParent = nodes.find((node) => node.id === newParentId);
+      if (!child || !newParent || !canCreateHierarchy(newParent, child)) {
+        setCanvasNotice("That hierarchy relationship is not valid.");
+        return false;
+      }
+
+      const destinationEpic =
+        newParent.type === "epic"
+          ? newParent
+          : nodes.find(
+              (node) =>
+                node.type === "epic" && node.parentId === newParent.parentId,
+            );
+      if (!destinationEpic) {
+        setCanvasNotice("Could not determine the destination Epic.");
+        return false;
+      }
+
+      const sourceGroupId = child.parentId;
+      const destinationGroupId = destinationEpic.parentId;
+
+      rememberForUndo(reason);
+
+      setNodes((currentNodes) => {
+        const next = currentNodes.map((node) => {
+          if (node.id !== childId) return node;
+
+          const inheritedSad =
+            newParent.data?.sadSectionId || destinationEpic.data?.sadSectionId || "";
+          const originalIssue = {
+            ...(node.data?.originalIssue || {}),
+            parent: newParent.data?.summary || "",
+          };
+
+          return {
+            ...node,
+            parentId: destinationEpic.parentId,
+            extent: undefined,
+            data: {
+              ...node.data,
+              parentNodeId: newParent.id,
+              sadSectionId: inheritedSad,
+              originalIssue,
+              changeState:
+                node.data?.jiraKey || node.data?.changeState === "existing"
+                  ? "modified"
+                  : node.data?.changeState || "new",
+            },
+          };
+        });
+
+        return relayoutAffectedLanes(
+          next,
+          [sourceGroupId, destinationGroupId],
+          dimensions,
+        );
+      });
+
+      setEdges((currentEdges) => {
+        const withoutOldHierarchy = currentEdges.filter(
+          (edge) =>
+            !(edge.target === childId && edge.data?.relationship === "hierarchy"),
+        );
+
+        return [
+          ...withoutOldHierarchy,
+          {
+            id: `hierarchy-${newParent.id}-${childId}-${Date.now()}`,
+            source: newParent.id,
+            sourceHandle: "bottom",
+            target: childId,
+            targetHandle: "top",
+            type: "customEdge",
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#475569" },
+            data: {
+              edgeType: "primary",
+              animated: false,
+              relationship: "hierarchy",
+              ...edgeHandlers,
+            },
+          },
+        ];
+      });
+
+      setCanvasNotice(
+        `${child.data?.summary || "Work item"} moved under ${newParent.data?.summary || "new parent"}.`,
+      );
+      return true;
+    },
+    [nodes, setNodes, setEdges, dimensions, edgeHandlers, rememberForUndo],
+  );
+
+  const handleNodeDragStop = useCallback(
+    (event, draggedNode) => {
+      if (!draggedNode) return;
+
+      // Always preserve a normal free-drag position. Empty-space drops are
+      // repositioning only unless that empty space belongs to another Epic lane.
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === draggedNode.id
+            ? { ...node, position: { ...draggedNode.position } }
+            : node,
+        ),
+      );
+
+      if (!["feature", "story"].includes(draggedNode.type)) {
+        return;
+      }
+
+      const currentNode =
+        nodes.find((node) => node.id === draggedNode.id) || draggedNode;
+
+      const nodesWithDraggedPosition = nodes.map((node) =>
+        node.id === draggedNode.id
+          ? { ...node, position: { ...draggedNode.position } }
+          : node,
+      );
+
+      const dragRect = getAbsoluteNodeRect(
+        { ...currentNode, position: draggedNode.position },
+        nodesWithDraggedPosition,
+      );
+
+      // Use the actual mouse/pointer position, converted into React Flow
+      // coordinates. This works correctly with zoom and pan and is much more
+      // reliable than checking the centre of a large Story card.
+      const dropPoint =
+        Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)
+          ? screenToFlowPosition({ x: event.clientX, y: event.clientY })
+          : { x: dragRect.cx, y: dragRect.cy };
+
+      const validParentTypes =
+        draggedNode.type === "feature" ? ["epic"] : ["feature", "epic"];
+
+      // 1) Direct card drop: Feature/Epic card under the pointer.
+      const cardCandidates = nodesWithDraggedPosition
+        .filter(
+          (node) =>
+            node.id !== draggedNode.id && validParentTypes.includes(node.type),
+        )
+        .map((node) => ({
+          node,
+          rect: getAbsoluteNodeRect(node, nodesWithDraggedPosition),
+        }))
+        .filter(({ rect }) => pointInsideRect(dropPoint, rect, 12))
+        .sort((a, b) => {
+          // If a Feature and its Epic overlap visually, a Story dropped on the
+          // Feature should belong to the Feature.
+          if (draggedNode.type === "story" && a.node.type !== b.node.type) {
+            return a.node.type === "feature" ? -1 : 1;
+          }
+          const da = Math.hypot(
+            dropPoint.x - a.rect.cx,
+            dropPoint.y - a.rect.cy,
+          );
+          const db = Math.hypot(
+            dropPoint.x - b.rect.cx,
+            dropPoint.y - b.rect.cy,
+          );
+          return da - db;
+        });
+
+      let target = cardCandidates[0]?.node || null;
+
+      // 2) Lane drop: dropping into the large empty area belonging to another
+      // Epic should also map the item to that Epic. This is important because
+      // the UI visually presents each rounded group/lane as the Epic workspace.
+      if (!target) {
+        const laneCandidates = nodesWithDraggedPosition
+          .filter((node) => node.type === "group")
+          .map((group) => ({
+            group,
+            rect: getAbsoluteNodeRect(group, nodesWithDraggedPosition),
+          }))
+          .filter(({ rect }) => pointInsideRect(dropPoint, rect, 0))
+          .sort((a, b) => {
+            const da = Math.hypot(
+              dropPoint.x - a.rect.cx,
+              dropPoint.y - a.rect.cy,
+            );
+            const db = Math.hypot(
+              dropPoint.x - b.rect.cx,
+              dropPoint.y - b.rect.cy,
+            );
+            return da - db;
+          });
+
+        for (const { group } of laneCandidates) {
+          // Dropping inside the Story's current Epic lane is a layout action,
+          // not a hierarchy change. Snap the lane back to its clean grid.
+          if (group.id === currentNode.parentId) {
+            setNodes((currentNodes) =>
+              relayoutAffectedLanes(currentNodes, [group.id], dimensions),
+            );
+            setCanvasNotice("Work item aligned inside its Epic lane.");
+            return;
+          }
+
+          const laneEpic = nodesWithDraggedPosition.find(
+            (node) => node.type === "epic" && node.parentId === group.id,
+          );
+          if (laneEpic) {
+            target = laneEpic;
+            break;
+          }
+        }
+      }
+
+      // 3) Forgiving overlap fallback for cases where the pointer ends just
+      // outside the card/lane boundary but the dragged card clearly overlaps it.
+      if (!target) {
+        const overlapArea = (a, b) => {
+          const left = Math.max(a.x, b.x);
+          const top = Math.max(a.y, b.y);
+          const right = Math.min(a.x + a.width, b.x + b.width);
+          const bottom = Math.min(a.y + a.height, b.y + b.height);
+          return Math.max(0, right - left) * Math.max(0, bottom - top);
+        };
+
+        const overlaps = nodesWithDraggedPosition
+          .filter(
+            (node) =>
+              node.id !== draggedNode.id && validParentTypes.includes(node.type),
+          )
+          .map((node) => {
+            const rect = getAbsoluteNodeRect(node, nodesWithDraggedPosition);
+            const area = overlapArea(dragRect, rect);
+            return {
+              node,
+              ratio: area / Math.max(1, rect.width * rect.height),
+            };
+          })
+          .filter(({ ratio }) => ratio >= 0.12)
+          .sort((a, b) => {
+            if (draggedNode.type === "story" && a.node.type !== b.node.type) {
+              return a.node.type === "feature" ? -1 : 1;
+            }
+            return b.ratio - a.ratio;
+          });
+
+        target = overlaps[0]?.node || null;
+      }
+
+      // No destination = ordinary free positioning. If the user drops on the
+      // current parent, keep the hierarchy and simply snap the lane back into
+      // a clean, deterministic layout.
+      if (!target) {
+        return;
+      }
+
+      if (target.id === currentNode.data?.parentNodeId) {
+        const groupId = currentNode.parentId || target.parentId;
+        setNodes((currentNodes) =>
+          relayoutAffectedLanes(currentNodes, [groupId], dimensions),
+        );
+        setCanvasNotice("Work item aligned inside its current parent.");
+        return;
+      }
+
+      reparentWorkItem(
+        draggedNode.id,
+        target.id,
+        `Move ${draggedNode.type} to ${target.data?.summary || target.type}`,
+      );
+    },
+    [nodes, reparentWorkItem, screenToFlowPosition, setNodes, dimensions],
+  );
 
   // =======================================================
   // Smart Add Work Item
@@ -2031,7 +3258,21 @@ function FlowCanvas() {
     () =>
       nodes
         .filter((node) => node.type === "epic")
-        .map((node) => ({ id: node.id, summary: node.data.summary || "Untitled Epic" })),
+        .map((node) => ({
+          id: node.id,
+          summary: node.data.summary || "Untitled Epic",
+        })),
+    [nodes],
+  );
+
+  const featureOptions = useMemo(
+    () =>
+      nodes
+        .filter((node) => node.type === "feature")
+        .map((node) => ({
+          id: node.id,
+          summary: node.data.summary || "Untitled Feature",
+        })),
     [nodes],
   );
 
@@ -2039,7 +3280,10 @@ function FlowCanvas() {
     () =>
       nodes
         .filter((node) => node.type === "story")
-        .map((node) => ({ id: node.id, summary: node.data.summary || "Untitled Story" })),
+        .map((node) => ({
+          id: node.id,
+          summary: node.data.summary || "Untitled Story",
+        })),
     [nodes],
   );
 
@@ -2048,20 +3292,25 @@ function FlowCanvas() {
       let defaultParentId = "";
       const selectedNode = nodes.find((node) => node.id === selectedNodeId);
 
+      if (type === "feature") {
+        defaultParentId =
+          selectedNode?.type === "epic"
+            ? selectedNode.id
+            : epicOptions[0]?.id || "";
+      }
+
       if (type === "story") {
-        if (selectedNode?.type === "epic") {
-          defaultParentId = selectedNode.id;
-        } else {
-          defaultParentId = epicOptions[0]?.id || "";
-        }
+        defaultParentId =
+          selectedNode?.type === "feature"
+            ? selectedNode.id
+            : featureOptions[0]?.id || epicOptions[0]?.id || "";
       }
 
       if (type === "subtask") {
-        if (selectedNode?.type === "story") {
-          defaultParentId = selectedNode.id;
-        } else {
-          defaultParentId = storyOptions[0]?.id || "";
-        }
+        defaultParentId =
+          selectedNode?.type === "story"
+            ? selectedNode.id
+            : storyOptions[0]?.id || "";
       }
 
       setCreateDefaultParentId(defaultParentId);
@@ -2069,7 +3318,13 @@ function FlowCanvas() {
       setShowAddMenu(false);
       setCreateType(type);
     },
-    [nodes, selectedNodeId, epicOptions, storyOptions],
+    [
+      nodes,
+      selectedNodeId,
+      epicOptions,
+      featureOptions,
+      storyOptions,
+    ],
   );
 
   const handleCreateWorkItem = useCallback(
@@ -2084,55 +3339,39 @@ function FlowCanvas() {
       if (type === "epic") {
         const laneId = createStableId("lane");
         const epicId = createStableId("epic");
-        const laneWidth = 760;
-        const laneHeight = 430;
-
-        const groupNodes = nodes.filter((node) => node.type === "group");
-        const nextY = groupNodes.reduce((bottom, lane) => {
-          const laneHeightValue = Number(lane.style?.height) || 430;
-          return Math.max(bottom, (lane.position?.y || 0) + laneHeightValue + 30);
-        }, 40);
-
         const newLane = {
           id: laneId,
           type: "group",
-          position: { x: 40, y: nextY },
+          position: { x: 40, y: 40 },
           data: { label: summary },
-          style: {
-            width: laneWidth,
-            height: laneHeight,
-          },
+          style: { width: 760, height: 430 },
           draggable: false,
           selectable: false,
         };
-
         const newEpic = {
           id: epicId,
           type: "epic",
           parentId: laneId,
-          extent: "parent",
-          position: {
-            x: (laneWidth - EPIC_WIDTH) / 2,
-            y: 40,
-          },
-          style: {
-            width: EPIC_WIDTH,
-            height: EPIC_HEIGHT,
-          },
+          position: { x: 40, y: 40 },
+          style: { width: EPIC_WIDTH, height: EPIC_HEIGHT },
           data: {
             issue_type: "Epic",
             summary,
             description,
             storyCount: 0,
-            originalIssue: {
-              issue_type: "Epic",
-              summary,
-              description,
-            },
+            originalIssue: { issue_type: "Epic", summary, description },
             onUpdate: handleUpdateNodeData,
             jiraKey: null,
             syncStatus: "idle",
             jiraError: null,
+            changeState: "new",
+            sadSectionId: "",
+            priority: "Medium",
+            status: "To Do",
+            sprint: "",
+            assignee: "",
+            hasDoD: false,
+            readinessIssues: ["Missing S-AD"],
           },
         };
 
@@ -2141,57 +3380,108 @@ function FlowCanvas() {
         );
         setCreateType(null);
         setCreateDefaultParentId("");
+        setTimeout(() => fitView({ padding: 0.08, duration: 400 }), 50);
+        return;
+      }
 
-        setTimeout(() => {
-          fitView({ padding: 0.08, duration: 400 });
-        }, 50);
+      if (type === "feature") {
+        const epicNode = nodes.find(
+          (node) => node.id === parentId && node.type === "epic",
+        );
+        if (!epicNode) return;
 
+        const featureId = createStableId(`${epicNode.id}-feature`);
+        const newFeature = {
+          id: featureId,
+          type: "feature",
+          parentId: epicNode.parentId,
+          position: { x: 40, y: 280 },
+          style: { width: FEATURE_WIDTH, height: FEATURE_HEIGHT },
+          data: {
+            issue_type: "Feature",
+            summary,
+            description,
+            childCount: 0,
+            parentNodeId: epicNode.id,
+            originalIssue: {
+              issue_type: "Feature",
+              summary,
+              description,
+              parent: epicNode.data.summary,
+            },
+            onUpdate: handleUpdateNodeData,
+            jiraKey: null,
+            syncStatus: "idle",
+            jiraError: null,
+            changeState: "new",
+            sadSectionId: epicNode.data.sadSectionId || "",
+            priority: "Medium",
+            status: "To Do",
+            sprint: "",
+            assignee: "",
+            hasDoD: false,
+            readinessIssues: [],
+          },
+        };
+
+        const newEdge = {
+          id: `${epicNode.id}-${featureId}`,
+          source: epicNode.id,
+          sourceHandle: "bottom",
+          target: featureId,
+          targetHandle: "top",
+          type: "customEdge",
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#334155" },
+          data: {
+            edgeType: "primary",
+            animated: false,
+            relationship: "hierarchy",
+            ...edgeHandlers,
+          },
+        };
+
+        setNodes((current) =>
+          layoutWorkflowNodes([...current, newFeature], dimensions),
+        );
+        setEdges((current) => [...current, newEdge]);
+        setCreateType(null);
+        setCreateDefaultParentId("");
         return;
       }
 
       if (type === "story") {
-        const epicNode = nodes.find(
-          (node) => node.id === parentId && node.type === "epic",
+        const parentNode = nodes.find(
+          (node) =>
+            node.id === parentId && ["feature", "epic"].includes(node.type),
         );
+        if (!parentNode) return;
 
+        const epicNode =
+          parentNode.type === "epic"
+            ? parentNode
+            : nodes.find(
+                (node) =>
+                  node.type === "epic" && node.parentId === parentNode.parentId,
+              );
         if (!epicNode) return;
 
-        const laneId = epicNode.parentId;
-        const laneNode = nodes.find((node) => node.id === laneId);
-        if (!laneNode) return;
-
-        const existingStories = nodes.filter(
-          (node) => node.type === "story" && node.parentId === laneId,
-        );
-
         const storyId = createStableId(`${epicNode.id}-story`);
-        const lanePaddingX = 40;
-        const storyGap = 40;
-        const storyY = 40 + EPIC_HEIGHT + 80;
-        const storyX = lanePaddingX + existingStories.length * (STORY_WIDTH + storyGap);
-        const requestedWidth = storyX + STORY_WIDTH + lanePaddingX;
-        const currentLaneWidth = Number(laneNode.style?.width) || 760;
-        const newLaneWidth = Math.max(currentLaneWidth, requestedWidth);
-        const storyHeight = STORY_BASE_HEIGHT;
-        const currentLaneHeight = Number(laneNode.style?.height) || 430;
-        const newLaneHeight = Math.max(
-          currentLaneHeight,
-          storyY + storyHeight + 40,
-        );
-
+        const storyIssue = {
+          issue_type: "Story",
+          summary,
+          description,
+          parent: parentNode.data.summary,
+          story_points: storyPoints,
+          dependencies: [],
+          acceptance_criteria: acceptanceCriteria || [],
+          hasDoD: false,
+        };
         const newStory = {
           id: storyId,
           type: "story",
-          parentId: laneId,
-          extent: "parent",
-          position: {
-            x: storyX,
-            y: storyY,
-          },
-          style: {
-            width: STORY_WIDTH,
-            height: storyHeight,
-          },
+          parentId: epicNode.parentId,
+          position: { x: 40, y: 480 },
+          style: { width: STORY_WIDTH, height: STORY_BASE_HEIGHT },
           data: {
             issue_type: "Story",
             summary,
@@ -2200,54 +3490,43 @@ function FlowCanvas() {
             tasks: [],
             dependencies: [],
             acceptanceCriteria: acceptanceCriteria || [],
-            originalIssue: {
-              issue_type: "Story",
-              summary,
-              description,
-              parent: epicNode.data.summary,
-              story_points: storyPoints,
-              dependencies: [],
-              acceptance_criteria: acceptanceCriteria || [],
-            },
+            parentNodeId: parentNode.id,
+            originalIssue: storyIssue,
             onUpdate: handleUpdateNodeData,
             jiraKey: null,
             syncStatus: "idle",
             jiraError: null,
+            changeState: "new",
+            sadSectionId:
+              parentNode.data.sadSectionId || epicNode.data.sadSectionId || "",
+            priority: "Medium",
+            status: "To Do",
+            sprint: "",
+            assignee: "",
+            hasDoD: false,
+            readinessIssues: getReadinessIssues(storyIssue, "Story"),
           },
         };
 
         const newEdge = {
-          id: `${epicNode.id}-${storyId}`,
-          source: epicNode.id,
+          id: `${parentNode.id}-${storyId}`,
+          source: parentNode.id,
           sourceHandle: "bottom",
           target: storyId,
           targetHandle: "top",
           type: "customEdge",
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: "#334155",
-          },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#334155" },
           data: {
             edgeType: "primary",
-            animated: true,
-            relationship: "workflow",
+            animated: false,
+            relationship: "hierarchy",
             ...edgeHandlers,
           },
         };
 
         setNodes((current) => {
-          const updatedNodes = current
+          const next = current
             .map((node) => {
-              if (node.id === laneId) {
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    label: epicNode.data.summary,
-                  },
-                };
-              }
-
               if (node.id === epicNode.id) {
                 return {
                   ...node,
@@ -2257,36 +3536,34 @@ function FlowCanvas() {
                   },
                 };
               }
-
+              if (node.id === parentNode.id && node.type === "feature") {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    childCount: (node.data.childCount || 0) + 1,
+                  },
+                };
+              }
               return node;
             })
             .concat(newStory);
-
-          return layoutWorkflowNodes(updatedNodes, dimensions);
+          return layoutWorkflowNodes(next, dimensions);
         });
-
         setEdges((current) => [...current, newEdge]);
         setCreateType(null);
         setCreateDefaultParentId("");
-
-        setTimeout(() => {
-          fitView({ padding: 0.08, duration: 400 });
-        }, 50);
-
         return;
       }
 
       if (type === "subtask") {
         setNodes((currentNodes) => {
           const updatedNodes = currentNodes.map((node) => {
-            if (node.id !== parentId || node.type !== "story") {
-              return node;
-            }
+            if (node.id !== parentId || node.type !== "story") return node;
 
             const existingTasks = Array.isArray(node.data.tasks)
               ? node.data.tasks
               : [];
-
             const newTask = {
               issue_type: "Sub-task",
               summary,
@@ -2295,7 +3572,6 @@ function FlowCanvas() {
               nodeId: createStableId(`${node.id}-task`),
               jiraKey: null,
             };
-
             const updatedTasks = [...existingTasks, newTask];
 
             return {
@@ -2308,6 +3584,10 @@ function FlowCanvas() {
               data: {
                 ...node.data,
                 tasks: updatedTasks,
+                changeState:
+                  node.data.jiraKey || node.data.changeState === "existing"
+                    ? "modified"
+                    : node.data.changeState || "new",
               },
             };
           });
@@ -2980,30 +4260,82 @@ function FlowCanvas() {
 
   const onConnect = useCallback(
     (params) => {
+      if (!params?.source || !params?.target || params.source === params.target) {
+        setCanvasNotice("Choose two different work items.");
+        return;
+      }
+
+      const sourceNode = nodes.find((node) => node.id === params.source);
+      const targetNode = nodes.find((node) => node.id === params.target);
+      if (!sourceNode || !targetNode || ["group"].includes(sourceNode.type) || ["group"].includes(targetNode.type)) {
+        setCanvasNotice("Relationships can only be created between work items.");
+        return;
+      }
+
+      setPendingConnection({ params, sourceNode, targetNode });
+    },
+    [nodes],
+  );
+
+  const handleRelationshipChoice = useCallback(
+    (relationship, dependencyType) => {
+      if (!pendingConnection) return;
+      const { params, sourceNode, targetNode } = pendingConnection;
+
+      if (relationship === "hierarchy") {
+        if (!canCreateHierarchy(sourceNode, targetNode)) {
+          setCanvasNotice(`A ${sourceNode.type} cannot be the parent of a ${targetNode.type}.`);
+          setPendingConnection(null);
+          return;
+        }
+        reparentWorkItem(
+          targetNode.id,
+          sourceNode.id,
+          `Re-parent ${targetNode.data?.summary || targetNode.type}`,
+        );
+        setPendingConnection(null);
+        return;
+      }
+
+      const duplicate = edges.some(
+        (edge) =>
+          edge.data?.relationship === "dependency" &&
+          edge.source === params.source &&
+          edge.target === params.target &&
+          edge.data?.dependencyType === dependencyType,
+      );
+      if (duplicate) {
+        setCanvasNotice("That dependency already exists.");
+        setPendingConnection(null);
+        return;
+      }
+
+      rememberForUndo(`Add ${dependencyType.replaceAll("_", " ")} dependency`);
       setEdges((eds) =>
         addEdge(
           {
             ...params,
-
+            id: `dependency-${params.source}-${params.target}-${Date.now()}`,
             type: "customEdge",
-
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              color: "#334155",
+              color: "#64748B",
             },
-
             data: {
-              edgeType: "primary",
-              animated: true,
-              relationship: "user",
+              edgeType: "secondary",
+              animated: false,
+              relationship: "dependency",
+              dependencyType,
               ...edgeHandlers,
             },
           },
           eds,
         ),
       );
+      setCanvasNotice(`Dependency created: ${dependencyType.replaceAll("_", " ")}.`);
+      setPendingConnection(null);
     },
-    [edgeHandlers, setEdges],
+    [pendingConnection, reparentWorkItem, edges, setEdges, edgeHandlers, rememberForUndo],
   );
 
   // =======================================================
@@ -3301,15 +4633,16 @@ function FlowCanvas() {
   return (
     <>
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={displayedNodes}
+        edges={displayedEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeDragStop={handleNodeDragStop}
         onNodeDoubleClick={(event, node) => {
           event.preventDefault();
 
-          if (node.type === "epic" || node.type === "story") {
+          if (["epic", "feature", "story"].includes(node.type)) {
             setCreateType(null);
             setCreateDefaultParentId("");
             setShowAddMenu(false);
@@ -3332,6 +4665,32 @@ function FlowCanvas() {
         />
 
         <Controls />
+
+        <Panel position="top-left" className="foreman-board-panel-wrap">
+          <BoardWorkspacePanel
+            summary={boardSummary}
+            sourceName={boardSourceName}
+            search={boardSearch}
+            onSearch={setBoardSearch}
+            typeFilter={boardTypeFilter}
+            onTypeFilter={setBoardTypeFilter}
+            stateFilter={boardStateFilter}
+            onStateFilter={setBoardStateFilter}
+            showDependencies={showDependencies}
+            onToggleDependencies={() => setShowDependencies((value) => !value)}
+            onLoadDemo={handleLoadBundledDataset}
+            onImport={handleExcelImport}
+            importBusy={importBusy}
+            importMessage={importMessage}
+            onOpenHealth={() => setShowHealthDrawer(true)}
+            onOpenSprints={() => setShowSprintDrawer(true)}
+            onOpenSad={() => setShowSadDrawer(true)}
+            onOpenChanges={() => setShowChangeDrawer(true)}
+            changeRequestCount={boardDataset?.changeRequests?.length || 0}
+            onFit={() => fitView({ padding: 0.05, duration: 400 })}
+            fileInputRef={boardFileInputRef}
+          />
+        </Panel>
 
         <Panel position="top-right" className="panel-actions">
           {loading && (
@@ -3364,6 +4723,18 @@ function FlowCanvas() {
 
           {!loading && (
             <>
+              {undoSnapshot && (
+                <button type="button" className="btn-canvas-undo" onClick={handleUndo}>
+                  ↶ Undo
+                </button>
+              )}
+
+              {canvasNotice && (
+                <span className="canvas-notice" title={canvasNotice}>
+                  {canvasNotice}
+                </span>
+              )}
+
               <button
                 className="btn-save-json"
                 onClick={handleSaveChanges}
@@ -3426,12 +4797,24 @@ function FlowCanvas() {
                   <button
                     type="button"
                     className="add-work-item-option"
+                    onClick={() => openCreatePanel("feature")}
+                  >
+                    <span className="add-type-icon feature">F</span>
+                    <span>
+                      <strong>Feature</strong>
+                      <small>Add a capability under an existing Epic.</small>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="add-work-item-option"
                     onClick={() => openCreatePanel("story")}
                   >
                     <span className="add-type-icon story">S</span>
                     <span>
                       <strong>Story</strong>
-                      <small>Add user-facing work under an existing Epic.</small>
+                      <small>Add user-facing work under an existing Feature.</small>
                     </span>
                   </button>
 
@@ -3462,10 +4845,50 @@ function FlowCanvas() {
         )}
       </ReactFlow>
 
+      {showHealthDrawer && boardAnalysis && (
+        <HealthDrawer
+          analysis={boardAnalysis}
+          onClose={() => setShowHealthDrawer(false)}
+          onSelectTicket={focusBoardTicket}
+        />
+      )}
+
+      {showSprintDrawer && boardDataset && (
+        <SprintCapacityDrawer
+          dataset={boardDataset}
+          onClose={() => setShowSprintDrawer(false)}
+        />
+      )}
+
+      {showSadDrawer && boardDataset && (
+        <SadTraceabilityDrawer
+          dataset={boardDataset}
+          onClose={() => setShowSadDrawer(false)}
+          onSelectTicket={focusBoardTicket}
+        />
+      )}
+
+      {showChangeDrawer && boardDataset && (
+        <ChangeRequestDrawer
+          dataset={boardDataset}
+          onClose={() => setShowChangeDrawer(false)}
+        />
+      )}
+
+      {pendingConnection && (
+        <RelationshipSelector
+          sourceNode={pendingConnection.sourceNode}
+          targetNode={pendingConnection.targetNode}
+          onChoose={handleRelationshipChoice}
+          onCancel={() => setPendingConnection(null)}
+        />
+      )}
+
       {createType && (
         <CreateWorkItemPanel
           type={createType}
           epicOptions={epicOptions}
+          featureOptions={featureOptions}
           storyOptions={storyOptions}
           defaultParentId={createDefaultParentId}
           onClose={() => {
