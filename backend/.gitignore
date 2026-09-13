@@ -5,9 +5,6 @@ __pycache__/*
 *.py[cod]
 *$py.class
 *.so
-agents/*
-!agents/clarification_agent.py
-!agents/definition_of_done_agent.py
 backend/agents/__pycache__/*
 # ============================================================================
 # Virtual Environments (Never commit libraries)
@@ -19,7 +16,7 @@ env/
 pythonenv*/
 venvScmGoGo/
 .scmgogovenv/
-
+foreman_data/
 # ============================================================================
 # Environment Variables & Secrets (Crucial for security)
 # ============================================================================

@@ -98,6 +98,26 @@ function Start() {
 
         </div>
 
+        <div className="start-options" style={{ marginTop: "10px" }}>
+          <button
+            type="button"
+            className="start-option"
+            onClick={() => navigate("/foreman-analysis")}
+          >
+            <span className="start-option-icon">📊</span>
+
+            <span className="start-option-text">
+              <strong>Foreman Analysis</strong>
+              <small>
+                See backlog health, dependency risk, capacity, and the
+                delivery forecast for the current dataset.
+              </small>
+            </span>
+
+            <span className="start-option-arrow">→</span>
+          </button>
+        </div>
+
         <div className="auth-footer">
           ScrumMasterGoGo version 1.0
         </div>
