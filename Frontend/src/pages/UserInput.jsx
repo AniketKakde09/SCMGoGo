@@ -43,6 +43,7 @@ function UserInput() {
 
   const [mode, setMode] = useState("text");
   const [input, setInput] = useState("");
+  const [clarificationsEnabled, setClarificationsEnabled] = useState(false);
 
   // Main document
   const [selectedFile, setSelectedFile] = useState(null);
@@ -194,6 +195,7 @@ function UserInput() {
         state: {
           uploadedFile: selectedFile,
           uploadedDataset: selectedDataset,
+          clarificationsEnabled,
         },
       });
 
@@ -217,6 +219,7 @@ function UserInput() {
     navigate("/canvas", {
       state: {
         uploadedDataset: selectedDataset,
+        clarificationsEnabled,
       },
     });
   };
@@ -502,6 +505,18 @@ function UserInput() {
             )}
 
           </div>
+
+          <label className="clarification-toggle">
+            <input
+              type="checkbox"
+              checked={clarificationsEnabled}
+              onChange={(e) => setClarificationsEnabled(e.target.checked)}
+            />
+            <span>
+              <strong>Ask clarification questions first</strong>
+              <small>We’ll ask up to 4 questions before creating your PI plan.</small>
+            </span>
+          </label>
 
           {/* ------------------------------------------------
               Submit

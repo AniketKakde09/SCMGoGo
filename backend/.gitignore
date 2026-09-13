@@ -6,6 +6,8 @@ __pycache__/*
 *$py.class
 *.so
 agents/*
+!agents/clarification_agent.py
+!agents/definition_of_done_agent.py
 backend/agents/__pycache__/*
 # ============================================================================
 # Virtual Environments (Never commit libraries)

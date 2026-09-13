@@ -1,12 +1,14 @@
 """Stage-based orchestration for the AI Scrum Master."""
 
+import re
+
 from agents.backlog_agent import run as run_backlog
+from agents.clarification_agent import run as run_clarification
+from agents.definition_of_done_agent import run as run_definition_of_done
 from agents.general_response_agent import run as run_general_response
 from agents.input_agent import run as run_input
 from agents.jira_agent import build_jira_payload
 from agents.requirement_agent import run as run_requirement
-
-
 # =========================================================
 # AI STAGES
 # =========================================================
@@ -25,6 +27,11 @@ AI_STAGES = [
         "runner": run_backlog,
     },
 ]
+
+
+def input_includes_definition_of_done(text: str) -> bool:
+    """Avoid replacing DoD criteria explicitly supplied by the user."""
+    return bool(re.search(r"\bdefinition\s+of\s+done\b|\bDoD\b|\bdod\b", text or "", re.IGNORECASE))
 
 
 # =========================================================
@@ -208,6 +215,10 @@ def reset_workflow(state: dict) -> None:
         "jira_payload": [],
 
         "approved": False,
+        "clarifications_enabled": False,
+        "clarification_questions": [],
+        "definition_of_done": [],
+        "has_definition_of_done": False,
 
         "response": "",
         "pending_action": "",
@@ -270,6 +281,20 @@ def process_user_input(
     # -----------------------------------------------------
 
     if state.get("intent") == "SCRUM":
+
+        if input_includes_definition_of_done(state.get("parsed_text", "")):
+            state["has_definition_of_done"] = True
+        else:
+            state = run_definition_of_done(state)
+
+        if state.get("clarifications_enabled"):
+            state = run_clarification(state)
+            questions = state.get("clarification_questions", [])
+            if questions:
+                state["current_stage"] = "waiting_for_approval"
+                state["pending_action"] = "answer_clarifications"
+                state["response"] = {"message": "Please answer these questions before I create the PI plan."}
+                return state
 
         return run_scrum_pipeline(
             state,

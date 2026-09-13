@@ -91,6 +91,9 @@ Each story must contain:
 - tasks
 
 ACCEPTANCE CRITERIA
+- Every story must contain between 1 and 4 acceptance criteria.
+- MINIMUM: 1 acceptance criterion.
+- MAXIMUM: 4 acceptance criteria. Never output a fifth.
 - Acceptance criteria must use: Given / When / Then
 - Do not introduce requirements that are not present in the input.
 - If a required target is not known, use neutral language such as "the agreed target" or "the defined target" instead of inventing a value.

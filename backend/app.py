@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -80,6 +80,10 @@ def create_initial_state(session_id: str) -> dict:
         "jira_payload": [],
 
         "approved": False,
+        "clarifications_enabled": False,
+        "clarification_questions": [],
+        "definition_of_done": [],
+        "has_definition_of_done": False,
 
         "response": "",
         "pending_action": "",
@@ -98,11 +102,9 @@ class ChatRequest(BaseModel):
         description="Existing session ID. Omit for the first request.",
     )
 
-    message: str = Field(
-        ...,
-        min_length=1,
-        description="User message.",
-    )
+    message: str = ""
+    clarifications_enabled: bool = False
+    clarification_answers: list[str] = Field(default_factory=list)
 
 
 # =========================================================
@@ -173,7 +175,22 @@ def process(request: ChatRequest):
     # UPDATE STATE
     # -----------------------------------------------------
 
-    state["raw_input"] = request.message
+    if state.get("current_stage") == "waiting_for_approval":
+        answers = [answer.strip() for answer in request.clarification_answers if answer.strip()]
+        questions = state.get("clarification_questions", [])
+        if len(answers) != len(questions) or not answers:
+            raise HTTPException(status_code=400, detail={"message": "Please answer every clarification question."})
+        state["raw_input"] = "{}\n\nClarifications provided by the user:\n{}".format(
+            state.get("parsed_text") or state.get("raw_input", ""),
+            "\n".join(f"- {question}: {answer}" for question, answer in zip(questions, answers)),
+        )
+        # This is deliberately a single round: responses now proceed directly to planning.
+        state["clarifications_enabled"] = False
+        state["clarification_questions"] = []
+        state["pending_action"] = ""
+    else:
+        state["raw_input"] = request.message
+        state["clarifications_enabled"] = request.clarifications_enabled
     state["error"] = ""
 
     # -----------------------------------------------------
@@ -309,7 +326,7 @@ def process(request: ChatRequest):
             ""
         ),
 
-        "questions": [],
+        "questions": state.get("clarification_questions", []) if frontend_status == "needs_clarification" else [],
 
         "data": data,
 
@@ -328,6 +345,7 @@ def process(request: ChatRequest):
 @app.post("/api/process/file")
 async def process_file(
     file: UploadFile = File(...),
+    clarifications_enabled: bool = Form(default=False),
     session_id: str | None = Query(default=None),
 ):
     """
@@ -413,6 +431,7 @@ async def process_file(
     state["parsed_text"] = extracted_text
     state["source_type"] = "file"
     state["filename"] = file.filename or ""
+    state["clarifications_enabled"] = clarifications_enabled
     state["error"] = ""
 
     # -----------------------------------------------------
@@ -501,7 +520,7 @@ async def process_file(
             "intent",
             ""
         ),
-        "questions": [],
+        "questions": state.get("clarification_questions", []) if frontend_status == "needs_clarification" else [],
         "data": data,
         "response": result.get(
             "response",
