@@ -649,3 +649,24 @@
     gap: 12px;
   }
 }
+
+.dataset-field {
+  margin-top: 8px;
+}
+
+.optional-label {
+  font-size: 0.85em;
+  font-weight: 400;
+  color: #777;
+}
+
+.dataset-description {
+  margin: 6px 0 12px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #666;
+}
+
+.dataset-dropzone {
+  border-style: dashed;
+}

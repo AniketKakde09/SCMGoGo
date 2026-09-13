@@ -5,11 +5,25 @@ import "./Auth.css";
 // Kept in sync with backend/services/document_converter.py
 // SUPPORTED_EXTENSIONS.
 const ACCEPTED_FILE_EXTENSIONS = [
-  ".pdf", ".doc", ".docx", ".ppt", ".pptx",
-  ".xls", ".xlsx", ".csv", ".txt", ".md", ".html", ".htm",
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".ppt",
+  ".pptx",
+  ".xls",
+  ".xlsx",
+  ".csv",
+  ".txt",
+  ".md",
+  ".html",
+  ".htm",
 ];
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB, matches backend
+
+// Optional dataset upload configuration
+const DATASET_ACCEPTED_EXTENSION = ".xlsx";
+const DATASET_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
 
 function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -20,12 +34,24 @@ function formatFileSize(bytes) {
 function UserInput() {
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Main document upload
   const fileInputRef = useRef(null);
+
+  // Optional dataset upload
+  const datasetInputRef = useRef(null);
 
   const [mode, setMode] = useState("text");
   const [input, setInput] = useState("");
+
+  // Main document
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileError, setFileError] = useState("");
+
+  // Optional dataset
+  const [selectedDataset, setSelectedDataset] = useState(null);
+  const [datasetError, setDatasetError] = useState("");
+
   const [message, setMessage] = useState(
     location.state?.message || ""
   );
@@ -44,6 +70,10 @@ function UserInput() {
     setMessage("");
     setFileError("");
   };
+
+  // ---------------------------------------------------------
+  // Main document upload
+  // ---------------------------------------------------------
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -67,7 +97,9 @@ function UserInput() {
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
       setFileError(
-        `That file is too large — max ${formatFileSize(MAX_FILE_SIZE_BYTES)}.`,
+        `That file is too large — max ${formatFileSize(
+          MAX_FILE_SIZE_BYTES
+        )}.`,
       );
       setSelectedFile(null);
       return;
@@ -86,11 +118,64 @@ function UserInput() {
     }
   };
 
+  // ---------------------------------------------------------
+  // Optional dataset upload
+  // ---------------------------------------------------------
+
+  const handleDatasetChange = (e) => {
+    const file = e.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const extension = file.name.includes(".")
+      ? "." + file.name.split(".").pop().toLowerCase()
+      : "";
+
+    // Dataset must be XLSX only
+    if (extension !== DATASET_ACCEPTED_EXTENSION) {
+      setDatasetError("Only .xlsx Excel files are supported.");
+      setSelectedDataset(null);
+      return;
+    }
+
+    // Dataset size validation
+    if (file.size > DATASET_MAX_FILE_SIZE_BYTES) {
+      setDatasetError(
+        `That dataset is too large — max ${formatFileSize(
+          DATASET_MAX_FILE_SIZE_BYTES
+        )}.`,
+      );
+      setSelectedDataset(null);
+      return;
+    }
+
+    setDatasetError("");
+    setSelectedDataset(file);
+  };
+
+  const handleRemoveDataset = () => {
+    setSelectedDataset(null);
+    setDatasetError("");
+
+    if (datasetInputRef.current) {
+      datasetInputRef.current.value = "";
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Submit
+  // ---------------------------------------------------------
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
     clearSessionState();
 
+    // -------------------------------------------------------
+    // Document mode
+    // -------------------------------------------------------
     if (mode === "file") {
       if (!selectedFile) {
         setFileError("Choose a document to upload first.");
@@ -99,15 +184,25 @@ function UserInput() {
 
       localStorage.removeItem("userInput");
 
-      // The File object is passed via router state (in-memory) —
-      // it can't be JSON-serialized into localStorage. Canvas.jsx
-      // reads it from location.state and uploads it directly.
+      // The File objects are passed via router state (in-memory).
+      // They can't be JSON-serialized into localStorage.
+      //
+      // Canvas.jsx can later read:
+      // location.state.uploadedFile
+      // location.state.uploadedDataset
       navigate("/canvas", {
-        state: { uploadedFile: selectedFile },
+        state: {
+          uploadedFile: selectedFile,
+          uploadedDataset: selectedDataset,
+        },
       });
 
       return;
     }
+
+    // -------------------------------------------------------
+    // Prompt mode
+    // -------------------------------------------------------
 
     const trimmedInput = input.trim();
 
@@ -117,7 +212,13 @@ function UserInput() {
 
     localStorage.setItem("userInput", trimmedInput);
 
-    navigate("/canvas");
+    // Dataset is optional and can be supplied together with
+    // the prompt.
+    navigate("/canvas", {
+      state: {
+        uploadedDataset: selectedDataset,
+      },
+    });
   };
 
   return (
@@ -152,6 +253,7 @@ function UserInput() {
         </div>
 
         <div className="intake-mode-toggle">
+
           <button
             type="button"
             className={
@@ -175,6 +277,7 @@ function UserInput() {
           >
             Upload a document
           </button>
+
         </div>
 
         {mode === "text" && (
@@ -189,10 +292,12 @@ function UserInput() {
                 <strong>PI name</strong> — e.g. "PI 2026.1" or the quarter
                 this increment covers.
               </li>
+
               <li>
                 <strong>Epic names</strong> — the major work streams you
                 want represented on the canvas.
               </li>
+
               <li>
                 <strong>Planning details</strong> — teams involved, key
                 dependencies, target sprints, and any goals or
@@ -215,10 +320,12 @@ function UserInput() {
                 A <strong>System/Software Architecture Document</strong>,
                 PRD, workshop notes, or similar planning document.
               </li>
+
               <li>
                 Supported types: {ACCEPTED_FILE_EXTENSIONS.join(", ")}
                 {" "}(max {formatFileSize(MAX_FILE_SIZE_BYTES)}).
               </li>
+
               <li>
                 If anything important is missing, we'll ask you
                 follow-up questions before building the plan.
@@ -232,6 +339,10 @@ function UserInput() {
           className="auth-form"
           onSubmit={handleSubmit}
         >
+
+          {/* ------------------------------------------------
+              Prompt input
+          ------------------------------------------------- */}
 
           {mode === "text" && (
             <div className="auth-field">
@@ -250,6 +361,10 @@ function UserInput() {
 
             </div>
           )}
+
+          {/* ------------------------------------------------
+              Main document upload
+          ------------------------------------------------- */}
 
           {mode === "file" && (
             <div className="auth-field">
@@ -275,6 +390,7 @@ function UserInput() {
                   <span className="file-dropzone-title">
                     Click to choose a file
                   </span>
+
                   <span className="file-dropzone-subtitle">
                     or drag one here
                   </span>
@@ -283,12 +399,15 @@ function UserInput() {
 
               {selectedFile && (
                 <div className="file-chip">
+
                   <span className="file-chip-name">
                     {selectedFile.name}
                   </span>
+
                   <span className="file-chip-size">
                     {formatFileSize(selectedFile.size)}
                   </span>
+
                   <button
                     type="button"
                     className="file-chip-remove"
@@ -297,6 +416,7 @@ function UserInput() {
                   >
                     ×
                   </button>
+
                 </div>
               )}
 
@@ -308,6 +428,84 @@ function UserInput() {
 
             </div>
           )}
+
+          {/* ------------------------------------------------
+              Optional dataset upload
+          ------------------------------------------------- */}
+
+          <div className="auth-field dataset-field">
+
+            <label className="auth-label">
+              Dataset{" "}
+              <span className="optional-label">
+                (optional)
+              </span>
+            </label>
+
+            <p className="dataset-description">
+              Upload an Excel dataset that can be used as
+              supporting information for your PI plan.
+            </p>
+
+            <input
+              ref={datasetInputRef}
+              type="file"
+              accept=".xlsx"
+              onChange={handleDatasetChange}
+              className="file-input-hidden"
+              id="pi-dataset-upload"
+            />
+
+            {!selectedDataset && (
+              <label
+                htmlFor="pi-dataset-upload"
+                className="file-dropzone dataset-dropzone"
+              >
+                <span className="file-dropzone-title">
+                  Click to choose an Excel dataset
+                </span>
+
+                <span className="file-dropzone-subtitle">
+                  .xlsx only · max{" "}
+                  {formatFileSize(DATASET_MAX_FILE_SIZE_BYTES)}
+                </span>
+              </label>
+            )}
+
+            {selectedDataset && (
+              <div className="file-chip">
+
+                <span className="file-chip-name">
+                  {selectedDataset.name}
+                </span>
+
+                <span className="file-chip-size">
+                  {formatFileSize(selectedDataset.size)}
+                </span>
+
+                <button
+                  type="button"
+                  className="file-chip-remove"
+                  onClick={handleRemoveDataset}
+                  aria-label="Remove dataset"
+                >
+                  ×
+                </button>
+
+              </div>
+            )}
+
+            {datasetError && (
+              <div className="auth-message">
+                {datasetError}
+              </div>
+            )}
+
+          </div>
+
+          {/* ------------------------------------------------
+              Submit
+          ------------------------------------------------- */}
 
           <button
             className="auth-button"
