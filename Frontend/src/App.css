@@ -196,6 +196,7 @@ html,
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   cursor: pointer;
   user-select: none;
@@ -242,6 +243,10 @@ html,
   margin-top: 10px;
   border-top: 1px solid var(--border-subtle);
   padding-top: 8px;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .tasks-header {
@@ -258,7 +263,7 @@ html,
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 120px;
+  min-height: 0;
   overflow-y: auto;
 }
 
