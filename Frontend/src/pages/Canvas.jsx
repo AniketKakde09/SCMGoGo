@@ -51,6 +51,18 @@ const FEATURE_HEIGHT = 150;
 const STORY_WIDTH = 320;
 const STORY_BASE_HEIGHT = 170;
 const STORY_TASK_HEIGHT = 28;
+const STORY_WARNING_HEIGHT = 22;
+
+// Extra space is needed whenever the readiness-warning banner
+// (e.g. "Missing DoD") renders, otherwise its line pushes the
+// task list past the card's fixed height and visually overflows.
+function calculateStoryHeight(taskCount, hasWarning) {
+  return (
+    STORY_BASE_HEIGHT +
+    taskCount * STORY_TASK_HEIGHT +
+    (hasWarning ? STORY_WARNING_HEIGHT : 0)
+  );
+}
 
 function createStableId(prefix) {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -2172,11 +2184,18 @@ function createDiagram(issuesData, onUpdateNodeData, edgeHandlers, dimensions) {
     laneStories.forEach((story, storyIndex) => {
       const tasks = issuesData.filter(
         (issue) =>
-          ["Sub-task", "Subtask"].includes(issue.issue_type) &&
+          ["Sub-task", "Subtask", "Task"].includes(issue.issue_type) &&
           issue.parent === story.summary,
       );
       const storyId = story.nodeId || `${epicId}-story-${storyIndex}`;
-      const storyHeight = STORY_BASE_HEIGHT + tasks.length * STORY_TASK_HEIGHT;
+      const storyReadinessIssues = getReadinessIssues(
+        story,
+        story.issue_type || "Story",
+      );
+      const storyHeight = calculateStoryHeight(
+        tasks.length,
+        storyReadinessIssues.length > 0,
+      );
       const parentFeatureId = featureNodeBySummary.get(story.parent);
       const parentNodeId = parentFeatureId || epicId;
 
@@ -2216,10 +2235,7 @@ function createDiagram(issuesData, onUpdateNodeData, edgeHandlers, dimensions) {
           sprint: story.sprint || story.sprintId || "",
           assignee: story.assignee || "",
           hasDoD: Boolean(story.hasDoD ?? story.has_dod),
-          readinessIssues: getReadinessIssues(
-            story,
-            story.issue_type || "Story",
-          ),
+          readinessIssues: storyReadinessIssues,
           sourceOrigin: story.sourceOrigin || "ai",
           sadSectionTitle: story.sadSectionTitle || "",
           layer: story.layer || "",
@@ -2789,8 +2805,31 @@ function FlowCanvas() {
 
           const updatedTasks = updatedFields.tasks ?? node.data.tasks ?? [];
 
-          const newStoryHeight =
-            STORY_BASE_HEIGHT + updatedTasks.length * STORY_TASK_HEIGHT;
+          const updatedReadinessIssues = getReadinessIssues(
+            {
+              ...node.data.originalIssue,
+              ...node.data,
+              ...updatedFields,
+              story_points:
+                updatedFields.storyPoints ?? node.data.storyPoints,
+              acceptance_criteria:
+                updatedFields.acceptanceCriteria ?? node.data.acceptanceCriteria,
+              hasDoD: updatedFields.hasDoD ?? node.data.hasDoD,
+              sad_section_id:
+                updatedFields.sadSectionId ?? node.data.sadSectionId,
+            },
+            node.data.issue_type ||
+              (node.type === "epic"
+                ? "Epic"
+                : node.type === "feature"
+                  ? "Feature"
+                  : "Story"),
+          );
+
+          const newStoryHeight = calculateStoryHeight(
+            updatedTasks.length,
+            updatedReadinessIssues.length > 0,
+          );
 
           return {
             ...node,
@@ -2810,26 +2849,7 @@ function FlowCanvas() {
                 node.data.jiraKey || node.data.changeState === "existing"
                   ? "modified"
                   : updatedFields.changeState || node.data.changeState || "new",
-              readinessIssues: getReadinessIssues(
-                {
-                  ...node.data.originalIssue,
-                  ...node.data,
-                  ...updatedFields,
-                  story_points:
-                    updatedFields.storyPoints ?? node.data.storyPoints,
-                  acceptance_criteria:
-                    updatedFields.acceptanceCriteria ?? node.data.acceptanceCriteria,
-                  hasDoD: updatedFields.hasDoD ?? node.data.hasDoD,
-                  sad_section_id:
-                    updatedFields.sadSectionId ?? node.data.sadSectionId,
-                },
-                node.data.issue_type ||
-                  (node.type === "epic"
-                    ? "Epic"
-                    : node.type === "feature"
-                      ? "Feature"
-                      : "Story"),
-              ),
+              readinessIssues: updatedReadinessIssues,
             },
           };
         });
@@ -3578,8 +3598,10 @@ function FlowCanvas() {
               ...node,
               style: {
                 ...node.style,
-                height:
-                  STORY_BASE_HEIGHT + updatedTasks.length * STORY_TASK_HEIGHT,
+                height: calculateStoryHeight(
+                  updatedTasks.length,
+                  (node.data.readinessIssues || []).length > 0,
+                ),
               },
               data: {
                 ...node.data,
