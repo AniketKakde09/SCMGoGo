@@ -12,7 +12,7 @@ LLM_PROVIDER = os.getenv(
 
 MODEL_ID = os.getenv(
     "MODEL_ID",
-    "gpt-5-mini"
+    "llama-3.3-70b-versatile"
 )
 
 API_KEY = os.getenv(

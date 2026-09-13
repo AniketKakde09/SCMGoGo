@@ -4,6 +4,7 @@ import SignIn from "./pages/SignIn";
 import Start from "./pages/Start";
 import UserInput from "./pages/UserInput";
 import Canvas from "./pages/Canvas";
+import ForemanAnalysis from "./pages/ForemanAnalysis";
 
 function App() {
   return (
@@ -28,6 +29,11 @@ function App() {
         <Route
           path="/canvas"
           element={<Canvas />}
+        />
+
+        <Route
+          path="/foreman-analysis"
+          element={<ForemanAnalysis />}
         />
 
         <Route

@@ -1,0 +1,328 @@
+/* =========================================================
+   Foreman Analysis page — reuses :root tokens from App.css
+   ========================================================= */
+
+.fa-page {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-canvas);
+  padding: 32px 24px 64px;
+}
+
+.fa-shell {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.fa-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.fa-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--primary-accent);
+}
+
+.fa-header h1 {
+  margin: 4px 0 6px;
+  color: var(--text-primary);
+  font-size: 24px;
+}
+
+.fa-subtitle {
+  margin: 0;
+  max-width: 520px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.fa-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.fa-summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.fa-summary-tile {
+  background: var(--surface-white);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.fa-summary-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.fa-summary-label {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.fa-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.fa-card {
+  background: var(--surface-white);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.fa-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 14px;
+}
+
+.fa-explainer {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.fa-subhead {
+  margin-top: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.fa-center {
+  margin: 10vh auto;
+  max-width: 420px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.fa-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--border-subtle);
+  border-top-color: var(--primary-accent);
+  animation: fa-spin 0.8s linear infinite;
+  margin-bottom: 6px;
+}
+
+@keyframes fa-spin {
+  to { transform: rotate(360deg); }
+}
+
+.fa-error-icon { font-size: 34px; }
+
+.fa-muted { color: var(--text-muted); font-size: 13px; }
+
+.fa-actions { display: flex; gap: 10px; margin-top: 8px; }
+
+.fa-btn {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-white);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fa-btn:hover { border-color: var(--primary-accent); color: var(--primary-accent); }
+
+.fa-btn-primary {
+  background: var(--primary-accent);
+  border-color: var(--primary-accent);
+  color: #fff;
+}
+
+.fa-btn-primary:hover { background: var(--primary-accent-hover); color: #fff; }
+
+.fa-link-btn {
+  display: block;
+  margin-top: 12px;
+  border: none;
+  background: none;
+  color: var(--primary-accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.fa-link-btn:hover { text-decoration: underline; }
+
+.fa-bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fa-bar-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 28px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.fa-bar-label { color: var(--text-secondary); }
+
+.fa-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-group);
+  overflow: hidden;
+}
+
+.fa-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #F59E0B, #D97706);
+}
+
+.fa-bar-count {
+  text-align: right;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.fa-kv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border-subtle);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.fa-kv-row:last-of-type { border-bottom: none; }
+
+.fa-warning-banner {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #FEF2F2;
+  color: #B91C1C;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fa-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.fa-pill-good { background: #ECFDF5; color: #047857; }
+.fa-pill-warn { background: #FFFBEB; color: #B45309; }
+.fa-pill-bad { background: #FEF2F2; color: #B91C1C; }
+.fa-pill-neutral { background: var(--surface-group); color: var(--text-secondary); }
+
+.fa-decisions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fa-decision {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.fa-decision-category {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--primary-accent);
+}
+
+.fa-decision-question {
+  margin: 4px 0;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 13.5px;
+}
+
+.fa-assumptions {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.fa-next-actions {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.fa-detail { overflow: hidden; }
+
+.fa-table-wrap { overflow-x: auto; }
+
+.fa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.fa-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.fa-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  vertical-align: top;
+}
+
+.fa-table tr:last-child td { border-bottom: none; }

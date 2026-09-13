@@ -12,3 +12,10 @@ source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app:app --reload
 ```
+
+
+```
+### backend pre-requisites
+backend/.env
+backend/foreman_data/Foreman_Synthetic_Dataset.xlsx
+```
