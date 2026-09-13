@@ -22,19 +22,17 @@ def call_llm(
     """Send a prompt to the LLM and return plain text output."""
     kwargs = {
         "model": MODEL_ID,
-        "input": prompt,
-        "max_output_tokens": max_output_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_output_tokens,
     }
 
     if json_mode:
-        kwargs["text"] = {
-            "format": {
-                "type": "json_object"
-            }
+        kwargs["response_format"] = {
+            "type": "json_object"
         }
 
-    response = client.responses.create(
+    response = client.chat.completions.create(
         **kwargs
     )
 
-    return response.output_text
+    return response.choices[0].message.content

@@ -9,6 +9,7 @@ from pipeline import process_user_input
 from jira_sync import router as jira_router
 from api_response import build_api_response
 from services.document_converter import extract_text_from_file
+from foreman.main import app as foreman_app
 
 # =========================================================
 # APPLICATION
@@ -38,6 +39,15 @@ app.add_middleware(
 # =========================================================
 
 app.include_router(jira_router)
+
+# =========================================================
+# FOREMAN (helper backend) — mounted under /foreman, endpoints
+# unchanged from helper-backend/README_AGENT.md, e.g.:
+#   POST /foreman/api/dataset/load
+#   POST /foreman/api/agent/run
+# =========================================================
+
+app.mount("/foreman", foreman_app)
 
 # =========================================================
 # SESSION STORAGE
