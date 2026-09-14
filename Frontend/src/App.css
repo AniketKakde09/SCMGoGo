@@ -1916,6 +1916,123 @@ html,
    Foreman Existing Board / Excel workspace
    ========================================================= */
 .foreman-board-panel-wrap { margin: 12px; }
+
+/* =========================================================
+   Epic decisions panel (Canvas) — ask-once prompts for
+   epic/SAD placement ambiguity. See components/EpicDecisionsPanel.jsx
+   and backend/agents/backlog_agent.py respond_to_epic_decision().
+   ========================================================= */
+
+.epic-decisions-panel-wrap { margin: 12px; }
+
+.epic-decisions-panel {
+  width: 300px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--surface-white);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  padding: 12px;
+}
+
+.epic-decisions-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.epic-decisions-count {
+  background: var(--primary-accent);
+  color: #FFFFFF;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+}
+
+.epic-decisions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.epic-decision-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-group);
+}
+
+.epic-decision-card-done {
+  background: transparent;
+}
+
+.epic-decision-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.epic-decision-question {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.epic-decision-outcome {
+  font-size: 12px;
+  color: var(--status-success);
+}
+
+.epic-decision-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.epic-decision-error {
+  font-size: 11px;
+  color: #B91C1C;
+  margin-bottom: 6px;
+}
+
+.epic-decision-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.epic-decision-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-white);
+  cursor: pointer;
+}
+
+.epic-decision-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.epic-decision-btn-primary {
+  background: var(--primary-accent);
+  border-color: var(--primary-accent);
+  color: #FFFFFF;
+}
 .foreman-board-panel {
   width: 306px;
   padding: 14px;

@@ -109,8 +109,8 @@ function Start() {
             <span className="start-option-text">
               <strong>Foreman Analysis</strong>
               <small>
-                See backlog health, dependency risk, capacity, and the
-                delivery forecast for the current dataset.
+                Upload your backlog workbook to see health, dependency risk,
+                capacity, and a delivery forecast — or try it with sample data.
               </small>
             </span>
 

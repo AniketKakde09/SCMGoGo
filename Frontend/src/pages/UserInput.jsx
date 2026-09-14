@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./Auth.css";
+import { uploadForemanDataset } from "../services/foremanAnalysisApi";
 
 // Kept in sync with backend/services/document_converter.py
 // SUPPORTED_EXTENSIONS.
@@ -51,6 +52,7 @@ function UserInput() {
   // Optional dataset
   const [selectedDataset, setSelectedDataset] = useState(null);
   const [datasetError, setDatasetError] = useState("");
+  const [datasetUploading, setDatasetUploading] = useState(false);
 
   const [message, setMessage] = useState(
     location.state?.message || ""
@@ -168,10 +170,49 @@ function UserInput() {
   // Submit
   // ---------------------------------------------------------
 
-  const handleSubmit = (e) => {
+  // The dataset is uploaded to the backend exactly once, right here —
+  // before navigating anywhere. This is what both Canvas's epic/SAD
+  // matching AND the Foreman Analysis report read from (see
+  // backend/services/backlog_context.py and foreman/main.py), so once
+  // this succeeds neither of those screens needs to ask for it again.
+  const uploadDatasetIfPresent = async () => {
+    if (!selectedDataset) {
+      return true;
+    }
+
+    setDatasetUploading(true);
+    setDatasetError("");
+
+    try {
+      await uploadForemanDataset(selectedDataset);
+      return true;
+    } catch (err) {
+      console.error("Dataset upload failed:", err);
+      setDatasetError(
+        err.message ||
+          "Couldn't upload that dataset. You can remove it and continue without one, or fix the file and try again.",
+      );
+      return false;
+    } finally {
+      setDatasetUploading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (datasetUploading) {
+      return;
+    }
+
     clearSessionState();
+
+    const datasetUploaded = await uploadDatasetIfPresent();
+    if (!datasetUploaded) {
+      // Stay on this screen — don't navigate with a dataset the backend
+      // never actually received.
+      return;
+    }
 
     // -------------------------------------------------------
     // Document mode
@@ -443,8 +484,10 @@ function UserInput() {
             </label>
 
             <p className="dataset-description">
-              Upload an Excel dataset that can be used as
-              supporting information for your PI plan.
+              Upload your backlog workbook (.xlsx) once — it's used to check
+              new epics against your existing backlog and architecture, and
+              it also powers the Foreman Analysis report. You won't be asked
+              for it again.
             </p>
 
             <input
@@ -510,8 +553,9 @@ function UserInput() {
           <button
             className="auth-button"
             type="submit"
+            disabled={datasetUploading}
           >
-            Create PI Plan
+            {datasetUploading ? "Uploading dataset…" : "Create PI Plan"}
           </button>
 
           {message && (

@@ -204,6 +204,7 @@ def reset_workflow(state: dict) -> None:
         "assumptions": [],
 
         "epics": [],
+        "epic_decisions": [],
 
         "jira_payload": [],
 

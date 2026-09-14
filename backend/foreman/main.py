@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import io
+
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -62,13 +64,30 @@ def health():
     }
 
 
+@app.get("/api/dataset/status")
+def dataset_status():
+    """Lets the frontend check whether a dataset is loaded without loading
+    or re-running anything. Used to decide whether to show the report or
+    an empty/upload state."""
+    loaded = repository.has_data()
+    return {
+        "loaded": loaded,
+        "source": repository.source_name if loaded else None,
+        "sheets": repository.sheet_names() if loaded else [],
+        "summary": repository.summary() if loaded else {},
+    }
+
+
 @app.post("/api/dataset/load")
 def load_dataset():
+    """Loads the bundled sample dataset. Used only when the user explicitly
+    chooses to try the demo data — never called automatically."""
     try:
         repository.load_excel(DEFAULT_DATASET)
 
         return {
             "status": "loaded",
+            "source": repository.source_name,
             "sheets": repository.sheet_names(),
             "summary": repository.summary(),
         }
@@ -84,6 +103,51 @@ def load_dataset():
             status_code=500,
             detail=f"Unable to load dataset: {exc}",
         ) from exc
+
+
+@app.post("/api/dataset/upload")
+async def upload_dataset(file: UploadFile = File(...)):
+    """Loads a user-supplied .xlsx workbook into the repository.
+
+    The workbook must contain the same sheets as the sample dataset
+    (Backlog, Dependencies, Sprints, TeamMembers, Holidays). On failure the
+    previously loaded dataset (if any) is left untouched.
+    """
+    filename = file.filename or "dataset.xlsx"
+    if not filename.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(
+            status_code=400,
+            detail="Please upload an Excel file (.xlsx).",
+        )
+
+    try:
+        content = await file.read()
+        repository.load_excel_stream(io.BytesIO(content), filename=filename)
+
+        return {
+            "status": "loaded",
+            "source": repository.source_name,
+            "sheets": repository.sheet_names(),
+            "summary": repository.summary(),
+        }
+
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to read the uploaded dataset: {exc}",
+        ) from exc
+
+
+@app.post("/api/dataset/clear")
+def clear_dataset():
+    """Drops the currently loaded dataset so the frontend can return to the
+    empty/upload state (e.g. 'Use a different dataset')."""
+    repository.data = {}
+    repository.source_name = None
+    return {"status": "cleared"}
 
 
 class EdgeRef(BaseModel):

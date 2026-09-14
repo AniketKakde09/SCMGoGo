@@ -23,6 +23,7 @@ import {
 
 import "@xyflow/react/dist/style.css";
 import "../App.css";
+import EpicDecisionsPanel from "../components/EpicDecisionsPanel";
 import {
   analyzeForemanDataset,
   buildCanvasIssues,
@@ -2657,6 +2658,8 @@ function FlowCanvas() {
   // Clarification round-trip: when the backend needs more detail
   // before it can build a dependable plan.
   const [clarification, setClarification] = useState(null);
+  const [epicFindings, setEpicFindings] = useState([]);
+  const [epicDecisions, setEpicDecisions] = useState([]);
 
   const [clarificationAnswer, setClarificationAnswer] = useState("");
 
@@ -3702,6 +3705,10 @@ function FlowCanvas() {
       localStorage.removeItem("scrumSessionId");
 
       setIssuesData(data.jira_payload);
+      setEpicFindings(Array.isArray(data.data?.epics) ? data.data.epics : []);
+      setEpicDecisions(
+        Array.isArray(data.data?.epic_decisions) ? data.data.epic_decisions : [],
+      );
 
       const diagram = createDiagram(
         data.jira_payload,
@@ -4713,6 +4720,33 @@ function FlowCanvas() {
             fileInputRef={boardFileInputRef}
           />
         </Panel>
+
+        {epicFindings.length > 0 && (
+          <Panel position="bottom-left" className="epic-decisions-panel-wrap">
+            <EpicDecisionsPanel
+              epics={epicFindings}
+              decisions={epicDecisions}
+              sessionId={sessionId}
+              onDecisionUpdate={(updatedDecision, updatedEpic) => {
+                setEpicDecisions((current) =>
+                  current.map((d) =>
+                    d.decision_id === updatedDecision.decision_id
+                      ? updatedDecision
+                      : d,
+                  ),
+                );
+
+                if (updatedEpic) {
+                  setEpicFindings((current) =>
+                    current.map((epic, index) =>
+                      index === updatedDecision.epic_index ? updatedEpic : epic,
+                    ),
+                  );
+                }
+              }}
+            />
+          </Panel>
+        )}
 
         <Panel position="top-right" className="panel-actions">
           {loading && (

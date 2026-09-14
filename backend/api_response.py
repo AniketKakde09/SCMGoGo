@@ -80,6 +80,10 @@ def build_api_response(state: dict) -> dict:
                 "epics",
                 []
             ),
+            "epic_decisions": state.get(
+                "epic_decisions",
+                []
+            ),
             "jira_payload": state.get(
                 "jira_payload",
                 []

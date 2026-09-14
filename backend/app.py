@@ -9,6 +9,7 @@ from pipeline import process_user_input
 from jira_sync import router as jira_router
 from api_response import build_api_response
 from services.document_converter import extract_text_from_file
+from agents.backlog_agent import respond_to_epic_decision
 from foreman.main import app as foreman_app
 
 # =========================================================
@@ -517,4 +518,55 @@ async def process_file(
             "response",
             {"message": ""}
         ),
+    }
+
+
+# =========================================================
+# EPIC DECISIONS — one-time optional input, not a retry loop
+# =========================================================
+# See agents/backlog_agent.py: respond_to_epic_decision(). Each decision is
+# asked at most once. If the person gives a hint, the epic/SAD match is
+# re-scored a single time; if they skip, or the new score still isn't
+# confident enough, the decision stays open for manual review later.
+# =========================================================
+
+class EpicDecisionResponse(BaseModel):
+    session_id: str
+    decision_id: str
+    hint: str | None = None
+
+
+@app.post("/api/epic-decisions/respond")
+def respond_epic_decision(request: EpicDecisionResponse):
+    state = sessions.get(request.session_id)
+
+    if state is None:
+        raise HTTPException(
+            status_code=404,
+            detail="The supplied session_id does not exist.",
+        )
+
+    try:
+        decision = respond_to_epic_decision(
+            state,
+            request.decision_id,
+            request.hint,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    sessions[request.session_id] = state
+
+    epic_index = decision.get("epic_index")
+    epics = state.get("epics", [])
+    updated_epic = (
+        epics[epic_index]
+        if epic_index is not None and epic_index < len(epics)
+        else None
+    )
+
+    return {
+        "success": True,
+        "decision": decision,
+        "epic": updated_epic,
     }

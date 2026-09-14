@@ -326,3 +326,179 @@
 }
 
 .fa-table tr:last-child td { border-bottom: none; }
+
+/* =========================================================
+   Dataset gate — empty state shown until a dataset exists.
+   Nothing here auto-loads data; every path requires a click.
+   ========================================================= */
+
+.fa-dropzone {
+  background: var(--surface-white);
+  border: 2px dashed var(--border-strong);
+  border-radius: 16px;
+  padding: 48px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.fa-dropzone-active {
+  border-color: var(--primary-accent);
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.fa-dropzone-busy {
+  border-style: solid;
+  border-color: var(--border-subtle);
+}
+
+.fa-dropzone-icon {
+  font-size: 34px;
+  margin-bottom: 4px;
+}
+
+.fa-dropzone h2 {
+  margin: 0 0 2px;
+  font-size: 17px;
+  color: var(--text-primary);
+}
+
+.fa-dropzone .fa-btn {
+  margin-top: 14px;
+}
+
+.fa-dropzone-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 220px;
+  margin: 16px 0 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.fa-dropzone-divider::before,
+.fa-dropzone-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.fa-link-btn-center {
+  text-align: center;
+  margin-top: 0;
+}
+
+.fa-inline-error {
+  background: #FEF2F2;
+  color: #B91C1C;
+  border: 1px solid #FCA5A5;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.fa-fineprint {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.fa-fineprint code {
+  background: var(--surface-group);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11.5px;
+}
+
+/* =========================================================
+   Dataset chip — shows what's currently loaded on the report
+   ========================================================= */
+
+.fa-dataset-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  background: var(--surface-white);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.fa-dataset-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-success);
+  flex-shrink: 0;
+}
+
+.fa-dataset-swap {
+  margin-left: 6px;
+  font-size: 12px;
+}
+
+/* =========================================================
+   Headline banner — one-sentence summary of backlog health
+   ========================================================= */
+
+.fa-headline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.fa-headline p { margin: 0; }
+
+.fa-headline-icon { font-size: 20px; flex-shrink: 0; }
+
+.fa-headline-good {
+  background: #ECFDF5;
+  color: #047857;
+}
+
+.fa-headline-warn {
+  background: #FFFBEB;
+  color: #B45309;
+}
+
+.fa-headline-bad {
+  background: #FEF2F2;
+  color: #B91C1C;
+}
+
+/* =========================================================
+   Category bar list — now with a one-line explanation
+   ========================================================= */
+
+.fa-bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fa-bar-item { display: flex; flex-direction: column; gap: 3px; }
+
+.fa-bar-blurb {
+  margin: 0 0 0 0;
+  padding-left: 2px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}

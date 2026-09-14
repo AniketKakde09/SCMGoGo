@@ -1,18 +1,53 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { loadForemanDataset, runForemanAnalysis } from "../services/foremanAnalysisApi";
+import {
+  clearForemanDataset,
+  getForemanDatasetStatus,
+  loadForemanSampleDataset,
+  runForemanAnalysis,
+  uploadForemanDataset,
+} from "../services/foremanAnalysisApi";
 import "./ForemanAnalysis.css";
 
-// Friendlier labels + order for the issue categories the backend returns.
-const CATEGORY_ORDER = [
-  "Capacity",
-  "Dependency",
-  "Readiness",
-  "Hierarchy",
-  "Traceability",
-  "Estimation",
-];
+// Friendlier labels + order for the issue categories the backend returns,
+// plus a one-line explanation so a reader doesn't have to guess what
+// "Traceability" or "Hierarchy" means in this context.
+const CATEGORY_INFO = {
+  Capacity: {
+    order: 0,
+    blurb: "A sprint or team member is committed beyond their available capacity.",
+  },
+  Dependency: {
+    order: 1,
+    blurb: "Missing, invalid, circular, or out-of-order dependencies between items.",
+  },
+  Readiness: {
+    order: 2,
+    blurb: "Stories or tasks missing acceptance criteria or a Definition of Done.",
+  },
+  Hierarchy: {
+    order: 3,
+    blurb: "Items with no parent, or a parent that doesn't exist in the backlog.",
+  },
+  Traceability: {
+    order: 4,
+    blurb: "Epics that aren't linked back to a valid solution/architecture section.",
+  },
+  Estimation: {
+    order: 5,
+    blurb: "Stories or tasks with no valid story-point estimate.",
+  },
+};
+
+const STAGE = {
+  CHECKING: "checking", // asking the backend if a dataset is already loaded
+  EMPTY: "empty", // no dataset loaded — show upload / sample options
+  LOADING_DATASET: "loading_dataset", // uploading or loading the sample
+  ANALYZING: "analyzing", // dataset loaded, running the analysis
+  READY: "ready", // report is visible
+  ERROR: "error",
+};
 
 function pct(confidence) {
   if (confidence == null) return "—";
@@ -23,89 +58,20 @@ function Pill({ tone, children }) {
   return <span className={`fa-pill fa-pill-${tone}`}>{children}</span>;
 }
 
-export default function ForemanAnalysis() {
-  const navigate = useNavigate();
+// ===========================================================
+// Empty state — the report is intentionally NOT preloaded.
+// A dataset must be provided (upload or sample) before any
+// analysis runs, so the person always knows what they're
+// looking at and where it came from.
+// ===========================================================
+function DatasetGate({ onFileChosen, onUseSample, busy, errorMessage }) {
+  const [isDragging, setIsDragging] = useState(false);
+  const inputRef = useRef(null);
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
-  const [report, setReport] = useState(null);
-  const [openPanel, setOpenPanel] = useState(null); // "issues" | "plan"
-
-  const load = useCallback(async ({ isRefresh = false } = {}) => {
-    isRefresh ? setRefreshing(true) : setLoading(true);
-    setError("");
-
-    try {
-      await loadForemanDataset();
-      const result = await runForemanAnalysis();
-      setReport(result);
-    } catch (err) {
-      console.error("Foreman analysis failed:", err);
-      setError(
-        err.message ||
-          "Could not reach the backend. Is it running on http://localhost:8000?",
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (loading) {
-    return (
-      <div className="fa-page">
-        <div className="fa-card fa-center">
-          <div className="fa-spinner" />
-          <p>Running Foreman analysis…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="fa-page">
-        <div className="fa-card fa-center">
-          <div className="fa-error-icon">⚠️</div>
-          <h2>Couldn't load the analysis</h2>
-          <p className="fa-muted">{error}</p>
-          <div className="fa-actions">
-            <button className="fa-btn fa-btn-primary" onClick={() => load()}>
-              Try Again
-            </button>
-            <button className="fa-btn" onClick={() => navigate("/start")}>
-              Back
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const health = report?.health || { total_issues: 0, by_category: {}, issues: [] };
-  const forecast = report?.forecast || {};
-  const plan = report?.plan || {};
-  const decisions = report?.human_decisions || [];
-  const nextActions = report?.next_best_actions || [];
-  const readiness = report?.readiness || {};
-
-  const counts = { ...health.by_category };
-  const orderedCategories = [
-    ...CATEGORY_ORDER.filter((c) => c in counts),
-    ...Object.keys(counts).filter((c) => !CATEGORY_ORDER.includes(c)),
-  ];
-
-  const planTone =
-    plan.status === "OPTIMAL" || plan.status === "FEASIBLE"
-      ? "good"
-      : plan.status === "NEEDS_HUMAN_INPUT"
-        ? "warn"
-        : "bad";
+  const handleFiles = (fileList) => {
+    const file = fileList && fileList[0];
+    if (file) onFileChosen(file);
+  };
 
   return (
     <div className="fa-page">
@@ -117,13 +83,312 @@ export default function ForemanAnalysis() {
             <p className="fa-subtitle">
               A plain-English read on readiness, dependencies, capacity, and
               the delivery forecast — generated by the Foreman engine, not by
-              the LLM.
+              an LLM.
+            </p>
+          </div>
+        </header>
+
+        <section
+          className={`fa-dropzone ${isDragging ? "fa-dropzone-active" : ""} ${
+            busy ? "fa-dropzone-busy" : ""
+          }`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!busy) setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+            if (!busy) handleFiles(e.dataTransfer.files);
+          }}
+        >
+          <div className="fa-dropzone-icon">📊</div>
+
+          {busy ? (
+            <>
+              <div className="fa-spinner" />
+              <h2>Reading your data…</h2>
+              <p className="fa-muted">This only takes a moment.</p>
+            </>
+          ) : (
+            <>
+              <h2>No dataset loaded yet</h2>
+              <p className="fa-muted">
+                You can upload one here, or go back and add it from the plan
+                input screen — either way it's shared across the app, so you
+                won't be asked twice.
+              </p>
+
+              <button
+                type="button"
+                className="fa-btn fa-btn-primary"
+                onClick={() => inputRef.current?.click()}
+              >
+                Choose file…
+              </button>
+
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".xlsx,.xlsm"
+                hidden
+                onChange={(e) => handleFiles(e.target.files)}
+              />
+
+              <div className="fa-dropzone-divider">
+                <span>or</span>
+              </div>
+
+              <button
+                type="button"
+                className="fa-link-btn fa-link-btn-center"
+                onClick={onUseSample}
+              >
+                Try it with sample data instead
+              </button>
+            </>
+          )}
+        </section>
+
+        {errorMessage && (
+          <div className="fa-inline-error">
+            <strong>Couldn't use that file.</strong> {errorMessage}
+          </div>
+        )}
+
+        <p className="fa-fineprint">
+          Expected sheets: <code>Backlog</code>, <code>Dependencies</code>,{" "}
+          <code>Sprints</code>, <code>TeamMembers</code>, <code>Holidays</code>
+          . Nothing is analyzed until you provide data — there's no
+          preloaded report.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function ForemanAnalysis() {
+  const navigate = useNavigate();
+
+  const [stage, setStage] = useState(STAGE.CHECKING);
+  const [report, setReport] = useState(null);
+  const [datasetSource, setDatasetSource] = useState(null);
+  const [error, setError] = useState("");
+  const [openPanel, setOpenPanel] = useState(null); // "issues" | "plan"
+
+  // Runs the analysis against whatever dataset is currently loaded on the
+  // backend. Assumes the dataset is already loaded — callers are
+  // responsible for that.
+  const analyze = useCallback(async () => {
+    setStage(STAGE.ANALYZING);
+    setError("");
+    try {
+      const result = await runForemanAnalysis();
+      setReport(result);
+      setStage(STAGE.READY);
+    } catch (err) {
+      console.error("Foreman analysis failed:", err);
+      setError(
+        err.message ||
+          "Could not reach the backend. Is it running on http://localhost:8000?",
+      );
+      setStage(STAGE.ERROR);
+    }
+  }, []);
+
+  // On mount: only check whether a dataset already exists — never load one
+  // automatically. This is what keeps the report from appearing before the
+  // person has actually provided data.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const status = await getForemanDatasetStatus();
+        if (cancelled) return;
+
+        if (status.loaded) {
+          setDatasetSource(status.source);
+          analyze();
+        } else {
+          setStage(STAGE.EMPTY);
+        }
+      } catch (err) {
+        console.error("Could not check dataset status:", err);
+        if (!cancelled) {
+          setError(
+            err.message ||
+              "Could not reach the backend. Is it running on http://localhost:8000?",
+          );
+          setStage(STAGE.ERROR);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [analyze]);
+
+  const handleFileChosen = async (file) => {
+    setStage(STAGE.LOADING_DATASET);
+    setError("");
+    try {
+      const result = await uploadForemanDataset(file);
+      setDatasetSource(result.source || file.name);
+      await analyze();
+    } catch (err) {
+      console.error("Dataset upload failed:", err);
+      setError(err.message || "Something went wrong reading that file.");
+      setStage(STAGE.EMPTY);
+    }
+  };
+
+  const handleUseSample = async () => {
+    setStage(STAGE.LOADING_DATASET);
+    setError("");
+    try {
+      const result = await loadForemanSampleDataset();
+      setDatasetSource(result.source || "Sample dataset");
+      await analyze();
+    } catch (err) {
+      console.error("Sample dataset load failed:", err);
+      setError(err.message || "Could not load the sample dataset.");
+      setStage(STAGE.EMPTY);
+    }
+  };
+
+  const handleUseDifferentDataset = async () => {
+    try {
+      await clearForemanDataset();
+    } catch (err) {
+      console.error("Could not clear dataset:", err);
+    }
+    setReport(null);
+    setDatasetSource(null);
+    setOpenPanel(null);
+    setStage(STAGE.EMPTY);
+  };
+
+  // ---------------------------------------------------------
+  // Loading / gate states
+  // ---------------------------------------------------------
+
+  if (stage === STAGE.CHECKING) {
+    return (
+      <div className="fa-page">
+        <div className="fa-card fa-center">
+          <div className="fa-spinner" />
+          <p>Checking for a loaded dataset…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (stage === STAGE.EMPTY || stage === STAGE.LOADING_DATASET) {
+    return (
+      <DatasetGate
+        onFileChosen={handleFileChosen}
+        onUseSample={handleUseSample}
+        busy={stage === STAGE.LOADING_DATASET}
+        errorMessage={stage === STAGE.EMPTY ? error : ""}
+      />
+    );
+  }
+
+  if (stage === STAGE.ANALYZING) {
+    return (
+      <div className="fa-page">
+        <div className="fa-card fa-center">
+          <div className="fa-spinner" />
+          <p>Running Foreman analysis…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (stage === STAGE.ERROR) {
+    return (
+      <div className="fa-page">
+        <div className="fa-card fa-center">
+          <div className="fa-error-icon">⚠️</div>
+          <h2>Couldn't load the analysis</h2>
+          <p className="fa-muted">{error}</p>
+          <div className="fa-actions">
+            <button className="fa-btn fa-btn-primary" onClick={analyze}>
+              Try Again
+            </button>
+            <button className="fa-btn" onClick={handleUseDifferentDataset}>
+              Use a different dataset
+            </button>
+            <button className="fa-btn" onClick={() => navigate("/start")}>
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------
+  // Report (stage === READY)
+  // ---------------------------------------------------------
+
+  const health = report?.health || { total_issues: 0, by_category: {}, issues: [] };
+  const forecast = report?.forecast || {};
+  const plan = report?.plan || {};
+  const decisions = report?.human_decisions || [];
+  const nextActions = report?.next_best_actions || [];
+  const readiness = report?.readiness || {};
+
+  const counts = { ...health.by_category };
+  const orderedCategories = Object.keys(counts).sort((a, b) => {
+    const orderA = CATEGORY_INFO[a]?.order ?? 99;
+    const orderB = CATEGORY_INFO[b]?.order ?? 99;
+    return orderA - orderB;
+  });
+
+  const criticalCount = (health.issues || []).filter(
+    (i) => i.severity === "CRITICAL",
+  ).length;
+
+  const planTone =
+    plan.status === "OPTIMAL" || plan.status === "FEASIBLE"
+      ? "good"
+      : plan.status === "NEEDS_HUMAN_INPUT"
+        ? "warn"
+        : "bad";
+
+  const isHealthy = health.total_issues === 0;
+
+  // A single plain-English sentence up top so someone can understand the
+  // state of the backlog without reading the whole page.
+  const headline = isHealthy
+    ? "This backlog looks healthy — no issues were found."
+    : criticalCount > 0
+      ? `${criticalCount} critical issue${criticalCount === 1 ? "" : "s"} ${
+          criticalCount === 1 ? "needs" : "need"
+        } attention before this plan can be trusted.`
+      : `${health.total_issues} issue${health.total_issues === 1 ? "" : "s"} found — none critical, but worth reviewing.`;
+
+  return (
+    <div className="fa-page">
+      <div className="fa-shell">
+        <header className="fa-header">
+          <div>
+            <div className="fa-eyebrow">FOREMAN ANALYSIS</div>
+            <h1>How healthy is this backlog?</h1>
+            <p className="fa-subtitle">
+              A plain-English read on readiness, dependencies, capacity, and
+              the delivery forecast — generated by the Foreman engine, not by
+              an LLM.
             </p>
           </div>
 
           <div className="fa-header-actions">
-            <button className="fa-btn" onClick={() => load({ isRefresh: true })} disabled={refreshing}>
-              {refreshing ? "Refreshing…" : "↻ Refresh"}
+            <button className="fa-btn" onClick={analyze}>
+              ↻ Re-run
             </button>
             <button className="fa-btn" onClick={() => navigate("/start")}>
               Back
@@ -131,8 +396,35 @@ export default function ForemanAnalysis() {
           </div>
         </header>
 
+        <div className="fa-dataset-chip">
+          <span className="fa-dataset-dot" />
+          Dataset: <strong>{datasetSource || "Unknown"}</strong>
+          <button
+            type="button"
+            className="fa-link-btn fa-dataset-swap"
+            onClick={handleUseDifferentDataset}
+          >
+            Use a different dataset
+          </button>
+        </div>
+
         {/* ------------------------------------------------- */}
-        {/* Top-line summary — the 3 numbers that matter most  */}
+        {/* Headline — one sentence anyone can understand      */}
+        {/* ------------------------------------------------- */}
+
+        <section
+          className={`fa-headline fa-headline-${
+            isHealthy ? "good" : criticalCount > 0 ? "bad" : "warn"
+          }`}
+        >
+          <span className="fa-headline-icon">
+            {isHealthy ? "✅" : criticalCount > 0 ? "🚫" : "⚠️"}
+          </span>
+          <p>{headline}</p>
+        </section>
+
+        {/* ------------------------------------------------- */}
+        {/* Top-line summary — the 4 numbers that matter most  */}
         {/* ------------------------------------------------- */}
 
         <section className="fa-summary-row">
@@ -175,25 +467,32 @@ export default function ForemanAnalysis() {
                   const max = Math.max(...Object.values(counts), 1);
                   const width = Math.max((counts[category] / max) * 100, 6);
                   return (
-                    <li key={category} className="fa-bar-row">
-                      <span className="fa-bar-label">{category}</span>
-                      <div className="fa-bar-track">
-                        <div className="fa-bar-fill" style={{ width: `${width}%` }} />
+                    <li key={category} className="fa-bar-item">
+                      <div className="fa-bar-row">
+                        <span className="fa-bar-label">{category}</span>
+                        <div className="fa-bar-track">
+                          <div className="fa-bar-fill" style={{ width: `${width}%` }} />
+                        </div>
+                        <span className="fa-bar-count">{counts[category]}</span>
                       </div>
-                      <span className="fa-bar-count">{counts[category]}</span>
+                      {CATEGORY_INFO[category]?.blurb && (
+                        <p className="fa-bar-blurb">{CATEGORY_INFO[category].blurb}</p>
+                      )}
                     </li>
                   );
                 })}
               </ul>
             )}
 
-            <button
-              type="button"
-              className="fa-link-btn"
-              onClick={() => setOpenPanel(openPanel === "issues" ? null : "issues")}
-            >
-              {openPanel === "issues" ? "Hide the full list" : "See every issue"}
-            </button>
+            {health.issues?.length > 0 && (
+              <button
+                type="button"
+                className="fa-link-btn"
+                onClick={() => setOpenPanel(openPanel === "issues" ? null : "issues")}
+              >
+                {openPanel === "issues" ? "Hide the full list" : "See every issue"}
+              </button>
+            )}
           </section>
 
           {/* ----------------------------------------------- */}
@@ -250,13 +549,15 @@ export default function ForemanAnalysis() {
               </div>
             )}
 
-            <button
-              type="button"
-              className="fa-link-btn"
-              onClick={() => setOpenPanel(openPanel === "plan" ? null : "plan")}
-            >
-              {openPanel === "plan" ? "Hide scheduled items" : "See scheduled items"}
-            </button>
+            {Array.isArray(plan.items) && plan.items.length > 0 && (
+              <button
+                type="button"
+                className="fa-link-btn"
+                onClick={() => setOpenPanel(openPanel === "plan" ? null : "plan")}
+              >
+                {openPanel === "plan" ? "Hide scheduled items" : "See scheduled items"}
+              </button>
+            )}
           </section>
         </div>
 
