@@ -1034,6 +1034,17 @@ function NodeEditPanel({ node, onClose, onSave }) {
                 <span>Definition of Done available</span>
               </label>
             </div>
+
+            {Array.isArray(node.data.definitionOfDone) && node.data.definitionOfDone.length > 0 && (
+              <div className="smart-list" style={{ marginTop: "12px" }}>
+                {node.data.definitionOfDone.map((criterion, index) => (
+                  <div className="smart-list-item" key={`${criterion}-${index}`}>
+                    <span className="smart-check">✓</span>
+                    <span className="smart-list-text">{criterion}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {isStory && (
@@ -2174,7 +2185,7 @@ function createDiagram(issuesData, onUpdateNodeData, edgeHandlers, dimensions) {
         markerEnd: { type: MarkerType.ArrowClosed, color: "#334155" },
         data: {
           edgeType: "primary",
-          animated: false,
+          animated: true,
           relationship: "hierarchy",
           ...edgeHandlers,
         },
@@ -2214,6 +2225,8 @@ function createDiagram(issuesData, onUpdateNodeData, edgeHandlers, dimensions) {
           dependencies: story.dependencies || [],
           acceptanceCriteria:
             story.acceptance_criteria || story.acceptanceCriteria || [],
+          definitionOfDone:
+            story.definition_of_done || story.definitionOfDone || [],
           originalIssue: story,
           onUpdate: onUpdateNodeData,
           jiraKey: story.jiraKey || story.jira_key || null,
@@ -2253,7 +2266,7 @@ function createDiagram(issuesData, onUpdateNodeData, edgeHandlers, dimensions) {
         markerEnd: { type: MarkerType.ArrowClosed, color: "#334155" },
         data: {
           edgeType: "primary",
-          animated: false,
+          animated: true,
           relationship: "hierarchy",
           ...edgeHandlers,
         },
@@ -2612,6 +2625,12 @@ function FlowCanvas() {
 
   const [loading, setLoading] = useState(true);
 
+  // An opted-in clarification round is evaluated before the canvas mounts, so
+  // users answer questions before seeing the canvas loading animation.
+  const [checkingClarifications, setCheckingClarifications] = useState(
+    () => location.state?.clarificationsEnabled === true,
+  );
+
   const [saving, setSaving] = useState(false);
 
   const [saveMessage, setSaveMessage] = useState("");
@@ -2658,7 +2677,7 @@ function FlowCanvas() {
   // before it can build a dependable plan.
   const [clarification, setClarification] = useState(null);
 
-  const [clarificationAnswer, setClarificationAnswer] = useState("");
+  const [clarificationAnswers, setClarificationAnswers] = useState([]);
 
   const [submittingClarification, setSubmittingClarification] = useState(false);
 
@@ -3077,7 +3096,7 @@ function FlowCanvas() {
             markerEnd: { type: MarkerType.ArrowClosed, color: "#475569" },
             data: {
               edgeType: "primary",
-              animated: false,
+              animated: true,
               relationship: "hierarchy",
               ...edgeHandlers,
             },
@@ -3454,7 +3473,7 @@ function FlowCanvas() {
           markerEnd: { type: MarkerType.ArrowClosed, color: "#334155" },
           data: {
             edgeType: "primary",
-            animated: false,
+            animated: true,
             relationship: "hierarchy",
             ...edgeHandlers,
           },
@@ -3538,7 +3557,7 @@ function FlowCanvas() {
           markerEnd: { type: MarkerType.ArrowClosed, color: "#334155" },
           data: {
             edgeType: "primary",
-            animated: false,
+            animated: true,
             relationship: "hierarchy",
             ...edgeHandlers,
           },
@@ -3670,8 +3689,11 @@ function FlowCanvas() {
         if (!isCancelled()) {
           setClarification({
             message: data.message || "I need a bit more detail.",
-            questions: Array.isArray(data.questions) ? data.questions : [],
+            questions: (Array.isArray(data.questions) ? data.questions : []).slice(0, 4),
           });
+          setClarificationAnswers(
+            (Array.isArray(data.questions) ? data.questions : []).slice(0, 4).map(() => ""),
+          );
 
           setNodes([]);
           setEdges([]);
@@ -3732,14 +3754,26 @@ function FlowCanvas() {
   const handleClarificationSubmit = async (e) => {
     e.preventDefault();
 
-    const answer = clarificationAnswer.trim();
+    const answers = clarificationAnswers.map((answer) => answer.trim());
 
-    if (!answer || submittingClarification) {
+    if (answers.some((answer) => !answer) || submittingClarification) {
       return;
     }
 
     setSubmittingClarification(true);
     setError("");
+    setClarification(null);
+    setLoading(true);
+
+    // The answers are now being turned into the final backlog, so transition
+    // from the question screen to the same canvas skeleton used for generation.
+    const skeleton = createSkeletonDiagram();
+    setNodes(skeleton.nodes);
+    setEdges(skeleton.edges);
+
+    setTimeout(() => {
+      fitView({ padding: 0.08, duration: 400 });
+    }, 50);
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/process`, {
@@ -3749,7 +3783,7 @@ function FlowCanvas() {
         },
         body: JSON.stringify({
           session_id: sessionId,
-          message: answer,
+          clarification_answers: answers,
         }),
       });
 
@@ -3761,14 +3795,17 @@ function FlowCanvas() {
         );
       }
 
-      setClarificationAnswer("");
+      setClarificationAnswers([]);
 
       applyBackendResponse(data, () => false);
     } catch (err) {
       console.error("Clarification submit failed:", err);
       setError(err.message || "Failed to submit your answer.");
+      setNodes([]);
+      setEdges([]);
     } finally {
       setSubmittingClarification(false);
+      setLoading(false);
     }
   };
 
@@ -3855,6 +3892,7 @@ function FlowCanvas() {
       // ---------------------------------------------------
 
       const uploadedFile = location.state?.uploadedFile || null;
+      const clarificationsEnabled = location.state?.clarificationsEnabled === true;
       const storedInput = localStorage.getItem("userInput");
 
       if (!uploadedFile && (!storedInput || !storedInput.trim())) {
@@ -3877,21 +3915,21 @@ function FlowCanvas() {
         setLoading(true);
         setError("");
 
-        // Show skeleton immediately
-        const skeleton = createSkeletonDiagram();
+        if (!clarificationsEnabled) {
+          // Standard generation retains the immediate canvas skeleton.
+          const skeleton = createSkeletonDiagram();
+          setNodes(skeleton.nodes);
+          setEdges(skeleton.edges);
 
-        setNodes(skeleton.nodes);
-
-        setEdges(skeleton.edges);
-
-        setTimeout(() => {
-          if (!cancelled) {
-            fitView({
-              padding: 0.08,
-              duration: 400,
-            });
-          }
-        }, 50);
+          setTimeout(() => {
+            if (!cancelled) {
+              fitView({
+                padding: 0.08,
+                duration: 400,
+              });
+            }
+          }, 50);
+        }
       }
 
       try {
@@ -3907,6 +3945,7 @@ function FlowCanvas() {
 
           const formData = new FormData();
           formData.append("file", uploadedFile);
+          formData.append("clarifications_enabled", String(clarificationsEnabled));
 
           const query = sessionId
             ? `?session_id=${encodeURIComponent(sessionId)}`
@@ -3930,6 +3969,7 @@ function FlowCanvas() {
             body: JSON.stringify({
               session_id: sessionId,
               message: trimmedInput,
+              clarifications_enabled: clarificationsEnabled,
             }),
           });
         }
@@ -3950,11 +3990,15 @@ function FlowCanvas() {
           );
         }
 
+        if (!cancelled) {
+          setCheckingClarifications(false);
+        }
         applyBackendResponse(data, () => cancelled);
       } catch (err) {
         console.error("Workflow processing failed:", err);
 
         if (!cancelled) {
+          setCheckingClarifications(false);
           setError(err.message || "Failed to process workflow.");
 
           // Clear skeleton on error
@@ -4441,6 +4485,18 @@ function FlowCanvas() {
   // Clarification Screen
   // =======================================================
 
+  if (checkingClarifications) {
+    return (
+      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#F8FAFC", padding: "24px" }}>
+        <div style={{ width: "min(440px, 100%)", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "16px", padding: "32px", boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)", textAlign: "center" }}>
+          <div style={{ color: "#2563EB", fontSize: "12px", fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase", marginBottom: "10px" }}>Preparing your plan</div>
+          <h2 style={{ margin: "0 0 8px", color: "#0F172A" }}>Reviewing your input</h2>
+          <p style={{ margin: 0, color: "#475569", fontSize: "14px", lineHeight: 1.5 }}>We’re checking for the details needed to create ready-to-plan stories and tasks.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (clarification && !loading) {
     return (
       <div
@@ -4486,41 +4542,19 @@ function FlowCanvas() {
             {clarification.message}
           </h2>
 
-          <ul
-            style={{
-              margin: "0 0 22px",
-              padding: "0 0 0 20px",
-              color: "#334155",
-              lineHeight: 1.6,
-              fontSize: "14px",
-            }}
-          >
-            {clarification.questions.map((question, index) => (
-              <li key={index} style={{ marginBottom: "8px" }}>
-                {question}
-              </li>
-            ))}
-          </ul>
-
           <form onSubmit={handleClarificationSubmit}>
-            <textarea
-              value={clarificationAnswer}
-              onChange={(e) => setClarificationAnswer(e.target.value)}
-              placeholder="Answer the question(s) above..."
-              required
-              style={{
-                width: "100%",
-                minHeight: "120px",
-                resize: "vertical",
-                padding: "12px 14px",
-                border: "1px solid #CBD5E1",
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontFamily: "inherit",
-                marginBottom: "14px",
-                boxSizing: "border-box",
-              }}
-            />
+            {clarification.questions.map((question, index) => (
+              <label key={index} style={{ display: "block", marginBottom: "14px", color: "#334155", fontSize: "14px", fontWeight: 600 }}>
+                {index + 1}. {question}
+                <textarea
+                  value={clarificationAnswers[index] || ""}
+                  onChange={(e) => setClarificationAnswers((answers) => answers.map((answer, answerIndex) => answerIndex === index ? e.target.value : answer))}
+                  placeholder="Your answer..."
+                  required
+                  style={{ width: "100%", minHeight: "76px", resize: "vertical", padding: "10px 12px", border: "1px solid #CBD5E1", borderRadius: "8px", fontSize: "14px", fontFamily: "inherit", marginTop: "7px", boxSizing: "border-box" }}
+                />
+              </label>
+            ))}
 
             {error && (
               <div
