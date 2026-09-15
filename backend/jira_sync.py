@@ -3,7 +3,6 @@ import os
 import queue
 import threading
 import uuid
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -37,15 +36,6 @@ PROJECT_KEY = os.environ.get(
     "JIRA_PROJECT_KEY",
     "",
 )
-
-
-# ============================================================
-# issues.json Configuration
-# ============================================================
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-ISSUES_FILE = BASE_DIR / "Frontend" / "src" / "data" / "issues.json"
 
 
 # ============================================================
@@ -1266,7 +1256,7 @@ def run_sync(
 # ============================================================
 
 
-@router.get("/api/health")
+@router.get("/api/jira/health")
 def health():
 
     return {
@@ -1274,79 +1264,6 @@ def health():
         "jira": "Server",
         "project": PROJECT_KEY,
     }
-
-
-# ============================================================
-# Issues JSON API
-# ============================================================
-
-
-@router.get("/api/issues")
-def get_issues():
-    try:
-        if not ISSUES_FILE.exists():
-            raise HTTPException(
-                status_code=404,
-                detail=f"issues.json not found at {ISSUES_FILE}",
-            )
-
-        with open(
-            ISSUES_FILE,
-            "r",
-            encoding="utf-8",
-        ) as file:
-            issues = json.load(file)
-
-        return issues
-
-    except HTTPException:
-        raise
-
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Invalid issues.json: {exc}",
-        )
-
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to read issues.json: {exc}",
-        )
-
-@router.put("/api/issues")
-def save_issues(
-    issues: List[Dict[str, Any]],
-):
-    try:
-        ISSUES_FILE.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        with open(
-            ISSUES_FILE,
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                issues,
-                file,
-                indent=2,
-                ensure_ascii=False,
-            )
-
-        return {
-            "status": "success",
-            "message": "issues.json saved successfully",
-            "count": len(issues),
-        }
-
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to save issues.json: {exc}",
-        )
 
 
 @router.post("/api/jira/sync")
