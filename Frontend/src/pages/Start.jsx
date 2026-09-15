@@ -1,38 +1,43 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Auth.css";
 
 function Start() {
   const navigate = useNavigate();
 
-  const handleWriteInput = () => {
-    // Make sure a stale blank-canvas flag doesn't linger from
-    // a previous visit and skip the workflow generation later.
-    // Also clear any saved-progress / session state — this is a
-    // new plan, not a continuation of a previous one.
-    localStorage.removeItem("canvasMode");
-    localStorage.removeItem("hasSavedProgress");
-    localStorage.removeItem("scrumSessionId");
+  const lastDatasetId = localStorage.getItem("foremanDatasetId");
+  const lastDatasetName = localStorage.getItem("foremanDatasetName");
 
-    navigate("/input");
+  const [showIdField, setShowIdField] = useState(false);
+  const [datasetIdInput, setDatasetIdInput] = useState("");
+
+  const handleUploadNew = () => {
+    navigate("/upload");
   };
 
-  const handleBlankCanvas = () => {
-    // Make sure no stale description is picked up by the canvas,
-    // and flag that this session should open empty. Also clear
-    // any saved-progress / session state — this is a new plan.
-    localStorage.removeItem("userInput");
-    localStorage.removeItem("hasSavedProgress");
-    localStorage.removeItem("scrumSessionId");
-    localStorage.setItem("canvasMode", "blank");
+  const handleContinueLast = () => {
+    navigate("/canvas", { state: { datasetId: lastDatasetId } });
+  };
 
-    navigate("/canvas");
+  const handleOpenById = (e) => {
+    e.preventDefault();
+
+    const trimmed = datasetIdInput.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    localStorage.setItem("foremanDatasetId", trimmed);
+    localStorage.removeItem("foremanDatasetName");
+
+    navigate("/canvas", { state: { datasetId: trimmed } });
   };
 
   return (
     <div className="auth-page">
 
-      <div className="scrum-watermark">
-        ScrumMaster<span>GoGo</span>
+      <div className="foreman-watermark">
+        Foreman<span>Knowledge</span>
       </div>
 
       <div className="auth-card auth-card-wide">
@@ -40,7 +45,7 @@ function Start() {
         <div className="auth-header">
 
           <div className="auth-logo">
-            PI
+            FK
           </div>
 
           <div className="auth-badge">
@@ -52,26 +57,46 @@ function Start() {
           </h1>
 
           <p className="auth-subtitle">
-            Describe your PI plan and let us generate the canvas for you,
-            or start from scratch and build it yourself.
+            Upload an Excel knowledge base to ingest into Foreman, or
+            reopen a dataset you've already processed.
           </p>
 
         </div>
 
         <div className="start-options">
 
+          {lastDatasetId && (
+            <button
+              type="button"
+              className="start-option"
+              onClick={handleContinueLast}
+            >
+              <span className="start-option-icon">🗂️</span>
+
+              <span className="start-option-text">
+                <strong>Continue with your last dataset</strong>
+                <small>
+                  {lastDatasetName || lastDatasetId}
+                </small>
+              </span>
+
+              <span className="start-option-arrow">→</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="start-option"
-            onClick={handleWriteInput}
+            onClick={handleUploadNew}
           >
-            <span className="start-option-icon">✍️</span>
+            <span className="start-option-icon">📤</span>
 
             <span className="start-option-text">
-              <strong>Write a prompt</strong>
+              <strong>Upload a new dataset</strong>
               <small>
-                Tell us about your PI, Epics, and planning details —
-                we'll build the canvas for you.
+                Upload an Excel knowledge base (Teams, Backlog,
+                Dependencies, Sprints...) — we'll ingest it and build
+                the canvas for you.
               </small>
             </span>
 
@@ -81,45 +106,50 @@ function Start() {
           <button
             type="button"
             className="start-option"
-            onClick={handleBlankCanvas}
+            onClick={() => setShowIdField((current) => !current)}
           >
-            <span className="start-option-icon">🧩</span>
+            <span className="start-option-icon">🔑</span>
 
             <span className="start-option-text">
-              <strong>Start with a blank canvas</strong>
+              <strong>Open an existing dataset by ID</strong>
               <small>
-                Skip the prompt and build your PI plan manually,
-                node by node.
+                Already ingested a dataset elsewhere? Paste its
+                dataset ID to reopen it.
               </small>
             </span>
 
-            <span className="start-option-arrow">→</span>
-          </button>
-
-        </div>
-
-        <div className="start-options" style={{ marginTop: "10px" }}>
-          <button
-            type="button"
-            className="start-option"
-            onClick={() => navigate("/foreman-analysis")}
-          >
-            <span className="start-option-icon">📊</span>
-
-            <span className="start-option-text">
-              <strong>Foreman Analysis</strong>
-              <small>
-                Upload your backlog workbook to see health, dependency risk,
-                capacity, and a delivery forecast — or try it with sample data.
-              </small>
+            <span className="start-option-arrow">
+              {showIdField ? "▲" : "→"}
             </span>
-
-            <span className="start-option-arrow">→</span>
           </button>
+
+          {showIdField && (
+            <form className="auth-form" onSubmit={handleOpenById}>
+              <div className="auth-field">
+                <label className="auth-label">
+                  Dataset ID
+                </label>
+
+                <input
+                  className="auth-input"
+                  type="text"
+                  value={datasetIdInput}
+                  onChange={(e) => setDatasetIdInput(e.target.value)}
+                  placeholder="e.g. 2e4736a5982e46ebbe98e94efb645017"
+                  autoFocus
+                />
+              </div>
+
+              <button className="auth-button" type="submit">
+                Open Dataset
+              </button>
+            </form>
+          )}
+
         </div>
 
         <div className="auth-footer">
-          ScrumMasterGoGo version 1.0
+          Foreman Knowledge API · v1.0
         </div>
 
       </div>

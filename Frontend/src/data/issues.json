@@ -1,96 +1,69 @@
 [
   {
     "issue_type": "Epic",
-    "summary": "Container Security",
-    "description": "Implement image vulnerability scanning, container hardening, and security issue remediation for containers orchestrated with Kubernetes or Docker Swarm.",
-    "nodeId": "epic-0",
-    "jiraKey": null
+    "summary": "GitLab PoC",
+    "description": "Req 1  dadad asad",
+    "nodeId": "epic-abde8fa5-3ddb-4be8-88f7-89a8edd3cc5f",
+    "jiraKey": null,
+    "changeState": "new",
+    "priority": "Medium",
+    "status": "To Do",
+    "sprint": "",
+    "assignee": "",
+    "sad_section_id": "",
+    "hasDoD": false
+  },
+  {
+    "issue_type": "Feature",
+    "summary": "sadasd",
+    "description": "asdasdasdasd",
+    "parent": "GitLab PoC",
+    "nodeId": "epic-abde8fa5-3ddb-4be8-88f7-89a8edd3cc5f-feature-affa21ab-db3b-447e-bfbb-a82bd2413cad",
+    "jiraKey": null,
+    "changeState": "new",
+    "priority": "Medium",
+    "status": "To Do",
+    "sprint": "",
+    "assignee": "",
+    "sad_section_id": "",
+    "hasDoD": false
   },
   {
     "issue_type": "Story",
-    "summary": "Image vulnerability scanning",
-    "description": "Integrate a selected scanning tool to automatically scan container images for known vulnerabilities.",
+    "summary": "Pipeline migration from AWS Codepipeline to GitLab CI/CD",
+    "description": "adasdadas",
+    "parent": "GitLab PoC",
     "story_points": 5,
     "dependencies": [],
     "acceptance_criteria": [
-      "Given a container image is built, When the scanning tool runs as part of the CI pipeline, Then identified vulnerabilities are reported in a traceable format."
+      "Configure pipeline with same logic",
+      "Pipeline should be executd successfully",
+      "Attach Report"
     ],
-    "parent": "Container Security",
-    "nodeId": "epic-0-story-0",
+    "hasDoD": true,
+    "nodeId": "epic-abde8fa5-3ddb-4be8-88f7-89a8edd3cc5f-story-938fab83-4e48-41dd-a3f6-9637b70c2bcc",
+    "jiraKey": null,
+    "changeState": "new",
+    "priority": "Medium",
+    "status": "To Do",
+    "sprint": "",
+    "assignee": "",
+    "sad_section_id": ""
+  },
+  {
+    "issue_type": "Sub-task",
+    "summary": "dfsdf",
+    "description": "",
+    "parent": "Pipeline migration from AWS Codepipeline to GitLab CI/CD",
+    "nodeId": "epic-abde8fa5-3ddb-4be8-88f7-89a8edd3cc5f-story-938fab83-4e48-41dd-a3f6-9637b70c2bcc-task-5e638284-7a09-496c-b730-e1e3d226449c",
     "jiraKey": null
   },
   {
     "issue_type": "Sub-task",
-    "summary": "Integrate scanning tool into CI pipeline",
-    "description": "Add the chosen scanning tool (e.g., Trivy, Clair, or Anchore) to the CI workflow to automatically scan each built image.",
-    "parent": "Image vulnerability scanning",
-    "nodeId": "epic-0-story-0-task-0",
-    "jiraKey": null
-  },
-  {
-    "issue_type": "Sub-task",
-    "summary": "Configure scanning policies",
-    "description": "Define which vulnerability severities trigger build failures or alerts.",
-    "parent": "Image vulnerability scanning",
-    "nodeId": "epic-0-story-0-task-1",
-    "jiraKey": null
-  },
-  {
-    "issue_type": "Story",
-    "summary": "Container hardening",
-    "description": "Apply hardening measures to containers to meet the CIS Docker Benchmark standards.",
-    "story_points": 5,
-    "dependencies": [],
-    "acceptance_criteria": [
-      "Given a container runtime environment, When hardening configurations are applied, Then the environment complies with the CIS Docker Benchmark."
-    ],
-    "parent": "Container Security",
-    "nodeId": "epic-0-story-1",
-    "jiraKey": null
-  },
-  {
-    "issue_type": "Sub-task",
-    "summary": "Implement CIS Benchmark compliance scripts",
-    "description": "Create scripts or configuration templates that enforce the required benchmark settings.",
-    "parent": "Container hardening",
-    "nodeId": "epic-0-story-1-task-0",
-    "jiraKey": null
-  },
-  {
-    "issue_type": "Sub-task",
-    "summary": "Validate hardening across environments",
-    "description": "Run compliance checks on test clusters to ensure all hardening rules are satisfied.",
-    "parent": "Container hardening",
-    "nodeId": "epic-0-story-1-task-1",
-    "jiraKey": null
-  },
-  {
-    "issue_type": "Story",
-    "summary": "Security issue remediation",
-    "description": "Automate remediation of identified security issues within the CI/CD pipeline.",
-    "story_points": 5,
-    "dependencies": [],
-    "acceptance_criteria": [
-      "Given vulnerabilities are reported, When the remediation workflow is triggered, Then the affected image is rebuilt without the identified issues and redeployed."
-    ],
-    "parent": "Container Security",
-    "nodeId": "epic-0-story-2",
-    "jiraKey": null
-  },
-  {
-    "issue_type": "Sub-task",
-    "summary": "Define remediation workflow in CI/CD",
-    "description": "Design a pipeline step that initiates image rebuilds when vulnerabilities exceed the defined threshold.",
-    "parent": "Security issue remediation",
-    "nodeId": "epic-0-story-2-task-0",
-    "jiraKey": null
-  },
-  {
-    "issue_type": "Sub-task",
-    "summary": "Automate rebuild and redeployment of fixed images",
-    "description": "Ensure the pipeline automatically rebuilds, tests, and redeploys images after successful remediation.",
-    "parent": "Security issue remediation",
-    "nodeId": "epic-0-story-2-task-1",
+    "summary": "asdasd",
+    "description": "",
+    "parent": "Pipeline migration from AWS Codepipeline to GitLab CI/CD",
+    "nodeId": "epic-abde8fa5-3ddb-4be8-88f7-89a8edd3cc5f-story-938fab83-4e48-41dd-a3f6-9637b70c2bcc-task-8a31c369-5dd5-4e94-a9b9-cfb0e0cd3067",
     "jiraKey": null
   }
 ]

@@ -9,10 +9,8 @@ function SignIn() {
 
     // TODO: Add real authentication here
 
-    localStorage.removeItem("userInput");
-    localStorage.removeItem("canvasMode");
-    localStorage.removeItem("hasSavedProgress");
-    localStorage.removeItem("scrumSessionId");
+    localStorage.removeItem("foremanDatasetId");
+    localStorage.removeItem("foremanDatasetName");
 
     navigate("/start");
   };
@@ -20,19 +18,19 @@ function SignIn() {
   return (
     <div className="auth-page">
 
-      <div className="scrum-watermark">
-        ScrumMaster<span>GoGo</span>
+      <div className="foreman-watermark">
+        Foreman<span>Knowledge</span>
       </div>
 
       <div className="auth-card">
 
         <div className="auth-header">
           <div className="auth-logo">
-            PI
+            FK
           </div>
 
           <div className="auth-badge">
-            PI Planning Platform
+            Delivery Intelligence Platform
           </div>
 
           <h1 className="auth-title">
@@ -40,7 +38,7 @@ function SignIn() {
           </h1>
 
           <p className="auth-subtitle">
-            Sign in to continue to your PI planning workspace.
+            Sign in to continue to your Foreman knowledge workspace.
           </p>
         </div>
 
@@ -83,7 +81,7 @@ function SignIn() {
         </form>
 
         <div className="auth-footer">
-          ScrumMasterGoGo version 1.0
+          Foreman Knowledge API · v1.0
         </div>
 
       </div>
