@@ -219,9 +219,11 @@ function buildDiagram(canvasGraph, handlers) {
   const issuesByEpic = new Map();
 
   issues.forEach((issue) => {
-    const parent = issue.parent_id && epicById.has(issue.parent_id)
-      ? issue.parent_id
-      : `sad-${issue.sad_section_id}`;
+    const epicId = getIssueEpicId(issue, issues, epics);
+    const sadId = issue.sad_section_id || issue.sadSectionId || "UNASSIGNED";
+    const parent = epicId && epicById.has(epicId)
+      ? epicId
+      : `sad-${sadId}`;
     if (!issuesByEpic.has(parent)) issuesByEpic.set(parent, []);
     issuesByEpic.get(parent).push(issue);
   });
@@ -240,7 +242,7 @@ function buildDiagram(canvasGraph, handlers) {
   const SAD_WIDTH = 300;
   const EPIC_WIDTH = 300;
   const ISSUE_WIDTH = 280;
-  const ISSUE_HEIGHT = 96;
+  const ISSUE_HEIGHT = 122;
   const X_GAP = 120;
   const Y_GAP = 44;
   const ISSUE_COLS = 3;
@@ -269,7 +271,12 @@ function buildDiagram(canvasGraph, handlers) {
           x: ISSUE_AREA_X + col * (ISSUE_WIDTH + ISSUE_X_GAP),
           y: baseY + row * ISSUE_ROW_HEIGHT,
         },
-        data: { issue, onOpen: handlers.onOpenIssue },
+        data: {
+          issue,
+          allIssues: issues,
+          epics,
+          onOpen: handlers.onOpenIssue,
+        },
         draggable: true,
         style: { width: ISSUE_WIDTH, height: ISSUE_HEIGHT },
       });
@@ -362,8 +369,8 @@ function buildDiagram(canvasGraph, handlers) {
       target: dependency.target,
       type: "dependency",
       data: { dependency },
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#DC2626" },
-      zIndex: 10,
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#94A3B8" },
+      zIndex: 20,
     });
   });
 
@@ -376,7 +383,8 @@ function makeHierarchyEdge(source, target) {
     target,
     type: "hierarchy",
     data: { state: "hierarchy" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#94A3B8" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#475569" },
+    zIndex: 1,
   };
 }
 
@@ -652,18 +660,133 @@ function CanvasEpicNode({ data }) {
   );
 }
 
+// ---------------------------------------------------------
+// Backlog quality / readiness flags
+// ---------------------------------------------------------
+// Only backlog work items (Feature / Story / Task) get these flags.
+// The flags are derived from the canvas payload so the UI remains useful
+// even when the backend does not send a pre-computed readiness object.
+function isBacklogWorkItem(issue) {
+  return ["feature", "story", "task", "sub-task"].includes(
+    String(issue?.type || issue?.issue_type || "").toLowerCase(),
+  );
+}
+
+function hasStoryPoints(issue) {
+  const value = issue?.story_points ?? issue?.storyPoints;
+  if (value === null || value === undefined || value === "") return false;
+  return Number(value) > 0;
+}
+
+function hasAcceptanceCriteria(issue) {
+  if (issue?.hasAcceptanceCriteria === true) return true;
+  if (String(issue?.hasAcceptanceCriteria || "").toUpperCase() === "Y") return true;
+  const criteria = issue?.acceptance_criteria ?? issue?.acceptanceCriteria;
+  return Array.isArray(criteria) && criteria.some((item) => String(item || "").trim());
+}
+
+function hasDefinitionOfDone(issue) {
+  if (issue?.hasDoD === true) return true;
+  if (String(issue?.hasDoD || "").toUpperCase() === "Y") return true;
+  return Boolean(String(issue?.dod || issue?.definition_of_done || issue?.definitionOfDone || "").trim());
+}
+
+function getIssueQualityFlags(issue, allIssues = [], epics = []) {
+  if (!isBacklogWorkItem(issue)) return [];
+
+  const flags = [];
+  const issueMap = new Map();
+  [...allIssues, ...epics].forEach((item) => {
+    const id = item?.id ?? item?.nodeId;
+    if (id) issueMap.set(String(id), item);
+  });
+
+  const epicIds = new Set(
+    epics
+      .map((epic) => epic?.id ?? epic?.nodeId)
+      .filter(Boolean)
+      .map(String),
+  );
+
+  // Resolve the complete ancestry. A Task may point to a Story, so checking
+  // only issue.parent_id would incorrectly flag a valid Task as missing Epic.
+  let parentId = issue?.parent_id ?? issue?.parentId ?? issue?.originalParentId ?? "";
+  const visited = new Set();
+  let hasEpic = false;
+
+  while (parentId && !visited.has(String(parentId))) {
+    const key = String(parentId);
+    visited.add(key);
+    if (epicIds.has(key)) {
+      hasEpic = true;
+      break;
+    }
+    const parent = issueMap.get(key);
+    if (!parent) break;
+    parentId = parent?.parent_id ?? parent?.parentId ?? parent?.originalParentId ?? "";
+  }
+
+  // Some payloads expose the Epic directly. Respect it when available.
+  const directEpic = issue?.epic_id ?? issue?.epicId ?? issue?.epic;
+  if (directEpic) hasEpic = true;
+
+  if (!hasEpic) {
+    flags.push({ key: "epic", label: "Epic", short: "EPIC", title: "Missing Epic mapping" });
+  }
+  if (!hasStoryPoints(issue)) {
+    flags.push({ key: "story-points", label: "Story points", short: "SP", title: "Missing story points" });
+  }
+  if (!hasAcceptanceCriteria(issue)) {
+    flags.push({ key: "acceptance-criteria", label: "Acceptance criteria", short: "AC", title: "Missing acceptance criteria" });
+  }
+  if (!hasDefinitionOfDone(issue)) {
+    flags.push({ key: "dod", label: "Definition of Done", short: "DoD", title: "Missing Definition of Done" });
+  }
+  if (!(issue?.sad_section_id ?? issue?.sadSectionId ?? "").toString().trim()) {
+    flags.push({ key: "sad", label: "S-AD", short: "S-AD", title: "Missing S-AD mapping" });
+  }
+
+  return flags;
+}
+
 function IssueNode({ data }) {
-  const { issue, onOpen } = data;
-  const type = (issue.type || "Issue").toUpperCase();
+  const { issue, onOpen, allIssues = [], epics = [] } = data;
+  const type = (issue.type || issue.issue_type || "Issue").toUpperCase();
+  const qualityFlags = getIssueQualityFlags(issue, allIssues, epics);
+
   return (
-    <div className={`canvas-issue-card issue-${String(issue.type || "issue").toLowerCase()}`} onDoubleClick={() => onOpen?.(issue)}>
+    <div
+      className={`canvas-issue-card issue-${String(issue.type || issue.issue_type || "issue").toLowerCase()} ${qualityFlags.length ? "has-quality-flags" : ""}`}
+      onDoubleClick={() => onOpen?.(issue)}
+      title={qualityFlags.length ? qualityFlags.map((flag) => flag.title).join(" · ") : undefined}
+    >
       <Handle type="target" position={Position.Left} className="handle handle-left nodrag" />
       <Handle type="source" position={Position.Right} className="handle handle-right nodrag" />
+
       <div className="canvas-card-header">
         <span className="badge issue-badge">{type}</span>
         <span className="canvas-card-id">{issue.id}</span>
         {issue.story_points != null && <span className="sp-pill">{issue.story_points} pts</span>}
       </div>
+
+      {qualityFlags.length > 0 && (
+        <div className="issue-quality-flags" aria-label={`${qualityFlags.length} missing backlog fields`}>
+          <span className="issue-quality-label">Needs refinement</span>
+          <div className="issue-quality-flag-list">
+            {qualityFlags.map((flag) => (
+              <span
+                key={flag.key}
+                className={`issue-quality-flag issue-quality-flag-${flag.key}`}
+                title={flag.title}
+              >
+                <span className="issue-quality-flag-icon">⚑</span>
+                <span>{flag.short}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="canvas-issue-title">{issue.title}</div>
       <div className="canvas-card-meta">{issue.status || "—"} · {issue.priority || "—"}</div>
     </div>
@@ -686,9 +809,9 @@ function DependencyEdge({
         path={edgePath}
         markerEnd={markerEnd}
         style={{
-          stroke: "#DC2626",
-          strokeWidth: 2.2,
-          strokeDasharray: "8 6",
+          stroke: "#94A3B8",
+          strokeWidth: 1.7,
+          strokeDasharray: "7 6",
         }}
         className="dependency-edge-path"
       />
@@ -698,12 +821,44 @@ function DependencyEdge({
 }
 
 function HierarchyEdge({
-  id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd,
+  id,
+  source,
+  target,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  markerEnd,
 }) {
-  const [edgePath] = getSmoothStepPath({
-    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, borderRadius: 12,
-  });
-  return <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={{ stroke: "#94A3B8", strokeWidth: 1.6 }} />;
+  // Route hierarchy edges around every visible node instead of letting the
+  // default smooth-step path run through cards in the middle column.
+  const { getNodes } = useReactFlow();
+  const flowNodes = getNodes();
+  const route = buildObstacleAwareRoute(
+    source,
+    target,
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    flowNodes,
+  );
+  const edgePath = route
+    .map(([x, y], index) => `${index === 0 ? "M" : "L"} ${x},${y}`)
+    .join(" ");
+
+  return (
+    <BaseEdge
+      id={id}
+      path={edgePath}
+      markerEnd={markerEnd}
+      style={{
+        stroke: "#475569",
+        strokeWidth: 2.1,
+        strokeDasharray: "none",
+      }}
+    />
+  );
 }
 
 const nodeTypes = {
@@ -722,10 +877,399 @@ const edgeTypes = {
 };
 
 // =========================================================
+// Editable backlog properties
+// =========================================================
+
+function normalizeLines(value) {
+  if (Array.isArray(value)) return value.map((v) => String(v || "").trim()).filter(Boolean);
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+function getItemId(item) {
+  return String(item?.id ?? item?.nodeId ?? item?.jiraKey ?? "").trim();
+}
+
+function getItemTitle(item) {
+  return item?.title ?? item?.summary ?? item?.section_title ?? item?.name ?? getItemId(item);
+}
+
+function getIssueParentId(issue) {
+  return String(issue?.parent_id ?? issue?.parentId ?? issue?.originalParentId ?? "").trim();
+}
+
+function getIssueEpicId(issue, allIssues = [], epics = []) {
+  const direct = issue?.epic_id ?? issue?.epicId;
+  if (direct) return String(direct);
+
+  const epicIds = new Set(epics.map(getItemId).filter(Boolean));
+  const byId = new Map([...allIssues, ...epics].map((item) => [getItemId(item), item]));
+  let parent = getIssueParentId(issue);
+  const seen = new Set();
+
+  while (parent && !seen.has(parent)) {
+    if (epicIds.has(parent)) return parent;
+    seen.add(parent);
+    parent = getIssueParentId(byId.get(parent));
+  }
+  return "";
+}
+
+function getIssueSprintId(issue) {
+  return String(issue?.sprint_id ?? issue?.sprintId ?? issue?.sprint ?? "").trim();
+}
+
+
+function applyCanvasOverrides(graph, datasetId) {
+  if (!graph || !datasetId) return graph;
+  try {
+    const overrides = JSON.parse(localStorage.getItem(`foremanCanvasOverrides:${datasetId}`) || "{}");
+    if (!overrides || typeof overrides !== "object") return graph;
+    return {
+      ...graph,
+      issues: (graph.issues || []).map((item) => overrides[item.id] ? { ...item, ...overrides[item.id] } : item),
+      epics: (graph.epics || []).map((item) => overrides[item.id] ? { ...item, ...overrides[item.id] } : item),
+      sad_sections: (graph.sad_sections || []).map((item) => overrides[item.id] ? { ...item, ...overrides[item.id] } : item),
+    };
+  } catch {
+    return graph;
+  }
+}
+
+function collectSprintOptions(forecast, currentSprint = "", canvasGraph = null) {
+  const result = [];
+  const seen = new Set();
+
+  (canvasGraph?.sprints || []).forEach((sprint) => {
+    const id = String(sprint?.SprintID ?? sprint?.sprint_id ?? sprint?.sprintId ?? sprint?.id ?? "").trim();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    result.push({ id, label: sprint?.SprintName || sprint?.name || id });
+  });
+
+  (forecast?.teams || []).forEach((team) => {
+    (team?.forecast_calendar || []).forEach((sprint) => {
+      const id = String(sprint?.sprint_id ?? sprint?.sprintId ?? sprint?.id ?? "").trim();
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      result.push({ id, label: sprint?.name || id });
+    });
+  });
+  if (currentSprint && !seen.has(String(currentSprint))) {
+    result.unshift({ id: String(currentSprint), label: String(currentSprint) });
+  }
+  return result;
+}
+
+function getAvailableParentOptions(issue, allIssues = [], epics = []) {
+  const type = String(issue?.type || issue?.issue_type || "").toLowerCase();
+  const issueItems = allIssues.filter((item) => item !== issue);
+
+  if (["feature", "story"].includes(type)) {
+    return epics.map((epic) => ({ id: getItemId(epic), label: getItemTitle(epic) })).filter((x) => x.id);
+  }
+
+  if (["task", "sub-task", "subtask"].includes(type)) {
+    return issueItems
+      .filter((item) => ["story", "task", "sub-task", "subtask"].includes(String(item?.type || item?.issue_type || "").toLowerCase()))
+      .map((item) => ({ id: getItemId(item), label: `${getItemTitle(item)} (${getItemId(item)})` }))
+      .filter((x) => x.id);
+  }
+
+  return [];
+}
+
+function applyIssueEdits(issue, values) {
+  const acceptanceCriteria = normalizeLines(values.acceptanceCriteria);
+  const storyPoints = values.storyPoints === "" ? null : Number(values.storyPoints);
+
+  const issueType = String(issue?.type || issue?.issue_type || "").toLowerCase();
+  const normalizedParentId = ["feature", "story"].includes(issueType)
+    ? (values.epicId || "")
+    : (values.parentId || "");
+
+  return {
+    ...issue,
+    title: values.title.trim(),
+    summary: values.title.trim(),
+    sad_section_id: values.sadSectionId || "",
+    sadSectionId: values.sadSectionId || "",
+    epic_id: values.epicId || "",
+    epicId: values.epicId || "",
+    parent_id: normalizedParentId,
+    parentId: normalizedParentId,
+    story_points: Number.isFinite(storyPoints) ? storyPoints : null,
+    storyPoints: Number.isFinite(storyPoints) ? storyPoints : null,
+    sprint_id: values.sprintId || "",
+    sprintId: values.sprintId || "",
+    sprint: values.sprintId || "",
+    acceptance_criteria: acceptanceCriteria,
+    acceptanceCriteria,
+    hasAcceptanceCriteria: acceptanceCriteria.length > 0,
+    dod: values.dod.trim(),
+    definition_of_done: values.dod.trim(),
+    definitionOfDone: values.dod.trim(),
+    hasDoD: Boolean(values.dod.trim()),
+  };
+}
+
+function EditableIssueBody({ panel, onSave }) {
+  const issue = panel.issue;
+  const allIssues = panel.allIssues || [];
+  const epics = panel.epics || [];
+  const sadSections = panel.sadSections || [];
+  const sprintOptions = panel.sprintOptions || [];
+  const [values, setValues] = useState(() => ({
+    title: getItemTitle(issue),
+    sadSectionId: String(issue?.sad_section_id ?? issue?.sadSectionId ?? ""),
+    epicId: getIssueEpicId(issue, allIssues, epics),
+    parentId: getIssueParentId(issue),
+    storyPoints: issue?.story_points ?? issue?.storyPoints ?? "",
+    sprintId: getIssueSprintId(issue),
+    acceptanceCriteria: Array.isArray(issue?.acceptance_criteria ?? issue?.acceptanceCriteria)
+      ? (issue.acceptance_criteria ?? issue.acceptanceCriteria).join("\n")
+      : String(issue?.acceptance_criteria ?? issue?.acceptanceCriteria ?? ""),
+    dod: String(issue?.dod ?? issue?.definition_of_done ?? issue?.definitionOfDone ?? ""),
+  }));
+
+  useEffect(() => {
+    setValues({
+      title: getItemTitle(issue),
+      sadSectionId: String(issue?.sad_section_id ?? issue?.sadSectionId ?? ""),
+      epicId: getIssueEpicId(issue, allIssues, epics),
+      parentId: getIssueParentId(issue),
+      storyPoints: issue?.story_points ?? issue?.storyPoints ?? "",
+      sprintId: getIssueSprintId(issue),
+      acceptanceCriteria: Array.isArray(issue?.acceptance_criteria ?? issue?.acceptanceCriteria)
+        ? (issue.acceptance_criteria ?? issue.acceptanceCriteria).join("\n")
+        : String(issue?.acceptance_criteria ?? issue?.acceptanceCriteria ?? ""),
+      dod: String(issue?.dod ?? issue?.definition_of_done ?? issue?.definitionOfDone ?? ""),
+    });
+  }, [issue, allIssues, epics]);
+
+  const parentOptions = getAvailableParentOptions(issue, allIssues, epics);
+  const type = String(issue?.type || issue?.issue_type || "").toLowerCase();
+  const isBacklog = isBacklogWorkItem(issue);
+
+  if (!isBacklog) {
+    return <div className="smart-empty">This node does not expose editable backlog properties.</div>;
+  }
+
+  const update = (key, value) => setValues((current) => ({ ...current, [key]: value }));
+
+  return (
+    <>
+      <div className="smart-edit-banner">
+        <strong>Edit backlog properties</strong>
+        <span>Only values available in this dataset are offered in dropdowns.</span>
+      </div>
+
+      <div className="smart-field">
+        <label>Title</label>
+        <input value={values.title} onChange={(e) => update("title", e.target.value)} />
+      </div>
+
+      <div className="smart-field">
+        <label>S-AD Section</label>
+        <select value={values.sadSectionId} onChange={(e) => update("sadSectionId", e.target.value)}>
+          <option value="">— Not assigned —</option>
+          {sadSections.map((sad) => {
+            const id = getItemId(sad);
+            return <option key={id} value={id}>{getItemTitle(sad)} ({id})</option>;
+          })}
+        </select>
+      </div>
+
+      <div className="smart-field">
+        <label>Epic</label>
+        <select value={values.epicId} onChange={(e) => update("epicId", e.target.value)}>
+          <option value="">— Not assigned —</option>
+          {epics.map((epic) => {
+            const id = getItemId(epic);
+            return <option key={id} value={id}>{getItemTitle(epic)} ({id})</option>;
+          })}
+        </select>
+      </div>
+
+      {parentOptions.length > 0 && (
+        <div className="smart-field">
+          <label>{["task", "sub-task", "subtask"].includes(type) ? "Parent Story / Task" : "Parent Epic"}</label>
+          <select value={values.parentId} onChange={(e) => update("parentId", e.target.value)}>
+            <option value="">— Not assigned —</option>
+            {parentOptions.map((parent) => <option key={parent.id} value={parent.id}>{parent.label}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div className="smart-field">
+        <label>Story Points</label>
+        <div className="smart-points">
+          {[1, 2, 3, 5, 8, 13, 21].map((points) => (
+            <button
+              type="button"
+              key={points}
+              className={Number(values.storyPoints) === points ? "selected" : ""}
+              onClick={() => update("storyPoints", points)}
+            >{points}</button>
+          ))}
+          <button type="button" className={values.storyPoints === "" || values.storyPoints == null ? "selected" : ""} onClick={() => update("storyPoints", "")}>None</button>
+        </div>
+        <div className="smart-helper-row"><span>Use a custom value</span></div>
+        <input
+          type="number"
+          min="0"
+          step="1"
+          value={values.storyPoints}
+          onChange={(e) => update("storyPoints", e.target.value)}
+          placeholder="Story points"
+        />
+      </div>
+
+      <div className="smart-field">
+        <label>Sprint</label>
+        <select value={values.sprintId} onChange={(e) => update("sprintId", e.target.value)}>
+          <option value="">— Not assigned —</option>
+          {sprintOptions.map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.label}</option>)}
+        </select>
+      </div>
+
+      <div className="smart-field">
+        <label>Acceptance Criteria</label>
+        <textarea
+          value={values.acceptanceCriteria}
+          onChange={(e) => update("acceptanceCriteria", e.target.value)}
+          placeholder="Enter one acceptance criterion per line"
+        />
+        <div className="smart-helper-row"><span>Each non-empty line becomes a criterion.</span></div>
+      </div>
+
+      <div className="smart-field">
+        <label>Definition of Done</label>
+        <textarea
+          value={values.dod}
+          onChange={(e) => update("dod", e.target.value)}
+          placeholder="Enter the Definition of Done"
+        />
+      </div>
+
+      <div className="smart-panel-footer">
+        <span className="smart-change-state">Changes apply to this canvas</span>
+        <div className="smart-footer-actions">
+          <button type="button" className="smart-save" onClick={() => onSave(applyIssueEdits(issue, values))}>Save changes</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function EditableSadBody({ panel, onSave }) {
+  const sad = panel.sad;
+  const [values, setValues] = useState(() => ({
+    title: String(sad?.section_title ?? sad?.title ?? ""),
+    architectureLayer: String(sad?.architecture_layer ?? ""),
+    summary: String(sad?.summary ?? ""),
+  }));
+
+  useEffect(() => {
+    setValues({
+      title: String(sad?.section_title ?? sad?.title ?? ""),
+      architectureLayer: String(sad?.architecture_layer ?? ""),
+      summary: String(sad?.summary ?? ""),
+    });
+  }, [sad]);
+
+  return (
+    <>
+      <div className="smart-edit-banner">
+        <strong>Edit S-AD properties</strong>
+        <span>These changes are stored locally for this dataset.</span>
+      </div>
+      <div className="smart-field">
+        <label>S-AD Name</label>
+        <input value={values.title} onChange={(e) => setValues((v) => ({ ...v, title: e.target.value }))} />
+      </div>
+      <div className="smart-field">
+        <label>Architecture Layer</label>
+        <input value={values.architectureLayer} onChange={(e) => setValues((v) => ({ ...v, architectureLayer: e.target.value }))} />
+      </div>
+      <div className="smart-field">
+        <label>Summary</label>
+        <textarea value={values.summary} onChange={(e) => setValues((v) => ({ ...v, summary: e.target.value }))} />
+      </div>
+      <div className="smart-panel-footer">
+        <span className="smart-change-state">Changes apply to this canvas</span>
+        <div className="smart-footer-actions">
+          <button type="button" className="smart-save" onClick={() => onSave({ ...sad, section_title: values.title.trim(), title: values.title.trim(), architecture_layer: values.architectureLayer.trim(), summary: values.summary.trim() })}>Save changes</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function EditableEpicBody({ panel, onSave }) {
+  const epic = panel.epic;
+  const sadSections = panel.sadSections || [];
+  const [values, setValues] = useState(() => ({
+    title: String(epic?.title ?? epic?.summary ?? ""),
+    sadSectionId: String(epic?.sad_section_id ?? epic?.sadSectionId ?? ""),
+    status: String(epic?.status ?? ""),
+    priority: String(epic?.priority ?? ""),
+  }));
+
+  useEffect(() => {
+    setValues({
+      title: String(epic?.title ?? epic?.summary ?? ""),
+      sadSectionId: String(epic?.sad_section_id ?? epic?.sadSectionId ?? ""),
+      status: String(epic?.status ?? ""),
+      priority: String(epic?.priority ?? ""),
+    });
+  }, [epic]);
+
+  return (
+    <>
+      <div className="smart-edit-banner">
+        <strong>Edit Epic properties</strong>
+        <span>S-AD is selected only from sections present in the dataset.</span>
+      </div>
+      <div className="smart-field">
+        <label>Epic Name</label>
+        <input value={values.title} onChange={(e) => setValues((v) => ({ ...v, title: e.target.value }))} />
+      </div>
+      <div className="smart-field">
+        <label>S-AD Section</label>
+        <select value={values.sadSectionId} onChange={(e) => setValues((v) => ({ ...v, sadSectionId: e.target.value }))}>
+          <option value="">— Not assigned —</option>
+          {sadSections.map((sad) => {
+            const id = getItemId(sad);
+            return <option key={id} value={id}>{getItemTitle(sad)} ({id})</option>;
+          })}
+        </select>
+      </div>
+      <div className="smart-field">
+        <label>Status</label>
+        <input value={values.status} onChange={(e) => setValues((v) => ({ ...v, status: e.target.value }))} />
+      </div>
+      <div className="smart-field">
+        <label>Priority</label>
+        <input value={values.priority} onChange={(e) => setValues((v) => ({ ...v, priority: e.target.value }))} />
+      </div>
+      <div className="smart-panel-footer">
+        <span className="smart-change-state">Changes apply to this canvas</span>
+        <div className="smart-footer-actions">
+          <button type="button" className="smart-save" onClick={() => onSave({ ...epic, title: values.title.trim(), summary: values.title.trim(), sad_section_id: values.sadSectionId || "", sadSectionId: values.sadSectionId || "", status: values.status.trim(), priority: values.priority.trim() })}>Save changes</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// =========================================================
 // Detail Panel (Team / Sprint / Remaining)
 // =========================================================
 
-function DetailPanel({ panel, onClose }) {
+function DetailPanel({ panel, onClose, onUpdateNode }) {
   if (!panel) return null;
 
   let iconClass = "epic";
@@ -889,67 +1433,23 @@ function DetailPanel({ panel, onClose }) {
     iconClass = "epic";
     typeLabel = "S-AD";
     title = sad.section_title || sad.title;
-    body = (
-      <>
-        <div className="smart-panel-summary-card">
-          <strong>{sad.id} · Section {sad.section_number || "—"}</strong>
-          <span>{sad.architecture_layer || "Architecture"}</span>
-        </div>
-        <div className="smart-field">
-          <label>S-AD</label>
-          <span style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>{sad.title || "—"}</span>
-        </div>
-        <div className="smart-field">
-          <label>Summary</label>
-          <span style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>{sad.summary || "No summary available."}</span>
-        </div>
-      </>
-    );
+    body = <EditableSadBody panel={panel} onSave={(updated) => onUpdateNode?.("sad", updated)} />;
   } else if (panel.type === "canvasEpic") {
     const epic = panel.epic;
     iconClass = "epic";
     typeLabel = "EPIC";
     title = epic.title;
-    body = (
-      <>
-        <div className="smart-panel-summary-card">
-          <strong>{epic.id}</strong>
-          <span>{epic.status || "—"}</span>
-        </div>
-        <div className="smart-field">
-          <label>S-AD Section</label>
-          <span style={{ fontSize: 12, color: "#334155" }}>{epic.sad_section_id || "—"}</span>
-        </div>
-        <div className="smart-field">
-          <label>Priority</label>
-          <span style={{ fontSize: 12, color: "#334155" }}>{epic.priority || "—"}</span>
-        </div>
-      </>
-    );
+    body = <EditableEpicBody panel={panel} onSave={(updated) => onUpdateNode?.("canvasEpic", updated)} />;
   } else if (panel.type === "issue") {
     const issue = panel.issue;
     iconClass = "story";
-    typeLabel = issue.type || "ISSUE";
-    title = issue.title;
+    typeLabel = issue.type || issue.issue_type || "ISSUE";
+    title = issue.title || issue.summary || issue.id;
     body = (
-      <>
-        <div className="smart-panel-summary-card">
-          <strong>{issue.id}</strong>
-          <span>{issue.status || "—"}</span>
-        </div>
-        <div className="smart-field">
-          <label>Hierarchy</label>
-          <span style={{ fontSize: 12, color: "#334155" }}>Epic: {issue.parent_id || "—"} · S-AD: {issue.sad_section_id || "—"}</span>
-        </div>
-        <div className="smart-field">
-          <label>Delivery</label>
-          <div className="panel-stat-grid">
-            <div className="panel-stat-box"><div className="panel-stat-box-value">{issue.story_points ?? "—"}</div><div className="panel-stat-box-label">Story points</div></div>
-            <div className="panel-stat-box"><div className="panel-stat-box-value">{issue.priority || "—"}</div><div className="panel-stat-box-label">Priority</div></div>
-            <div className="panel-stat-box"><div className="panel-stat-box-value">{issue.sprint_id || "—"}</div><div className="panel-stat-box-label">Sprint</div></div>
-          </div>
-        </div>
-      </>
+      <EditableIssueBody
+        panel={panel}
+        onSave={(updatedIssue) => onUpdateNode?.("issue", updatedIssue)}
+      />
     );
   } else if (panel.type === "remaining") {
     iconClass = "warning";
@@ -1427,12 +1927,53 @@ function FlowCanvas() {
       onOpenTeam: (team) => openDetail("team", { team }),
       onOpenSprint: (sprint) => openDetail("sprint", { sprint }),
       onOpenRemaining: (payload) => openDetail("remaining", payload),
-      onOpenSad: (sad) => openDetail("sad", { sad }),
-      onOpenEpic: (epic) => openDetail("canvasEpic", { epic }),
-      onOpenIssue: (issue) => openDetail("issue", { issue }),
+      onOpenSad: (sad) => openDetail("sad", { sad, sadSections: canvasGraph?.sad_sections || [] }),
+      onOpenEpic: (epic) => openDetail("canvasEpic", { epic, sadSections: canvasGraph?.sad_sections || [] }),
+      onOpenIssue: (issue) => openDetail("issue", {
+        issue,
+        allIssues: canvasGraph?.issues || [],
+        epics: canvasGraph?.epics || [],
+        sadSections: canvasGraph?.sad_sections || [],
+        sprintOptions: collectSprintOptions(forecast, getIssueSprintId(issue), canvasGraph),
+      }),
     }),
-    [openDetail],
+    [openDetail, canvasGraph, forecast],
   );
+
+  const handleUpdateNode = useCallback((type, updatedNode) => {
+    if (!updatedNode?.id || !canvasGraph) return;
+
+    const nextGraph = {
+      ...canvasGraph,
+      issues: (canvasGraph.issues || []).map((item) => item.id === updatedNode.id ? updatedNode : item),
+      epics: (canvasGraph.epics || []).map((item) => item.id === updatedNode.id ? updatedNode : item),
+      sad_sections: (canvasGraph.sad_sections || []).map((item) => item.id === updatedNode.id ? updatedNode : item),
+    };
+
+    const overrides = JSON.parse(localStorage.getItem(`foremanCanvasOverrides:${datasetId}`) || "{}");
+    overrides[updatedNode.id] = updatedNode;
+    localStorage.setItem(`foremanCanvasOverrides:${datasetId}`, JSON.stringify(overrides));
+
+    setCanvasGraph(nextGraph);
+    const diagram = buildDiagram(nextGraph, nodeHandlers);
+    setNodes(diagram.nodes);
+    setEdges(diagram.edges);
+
+    if (type === "issue") {
+      setActivePanel({
+        type,
+        issue: updatedNode,
+        allIssues: nextGraph.issues || [],
+        epics: nextGraph.epics || [],
+        sadSections: nextGraph.sad_sections || [],
+        sprintOptions: collectSprintOptions(forecast, getIssueSprintId(updatedNode), nextGraph),
+      });
+    } else if (type === "canvasEpic") {
+      setActivePanel({ type, epic: updatedNode, sadSections: nextGraph.sad_sections || [] });
+    } else if (type === "sad") {
+      setActivePanel({ type, sad: updatedNode, sadSections: nextGraph.sad_sections || [] });
+    }
+  }, [datasetId, canvasGraph, nodeHandlers, forecast]);
 
   const loadEverything = useCallback(async () => {
     if (!datasetId) return;
@@ -1469,9 +2010,10 @@ function FlowCanvas() {
         getCanvasGraph(datasetId),
       ]);
       setForecast(forecastResult);
-      setCanvasGraph(canvasResult);
+      const mergedCanvasResult = applyCanvasOverrides(canvasResult, datasetId);
+      setCanvasGraph(mergedCanvasResult);
 
-      const diagram = buildDiagram(canvasResult, nodeHandlers);
+      const diagram = buildDiagram(mergedCanvasResult, nodeHandlers);
       setNodes(diagram.nodes);
       setEdges(diagram.edges);
 
@@ -1508,9 +2050,10 @@ function FlowCanvas() {
         getCanvasGraph(datasetId),
       ]);
       setForecast(forecastResult);
-      setCanvasGraph(canvasResult);
+      const mergedCanvasResult = applyCanvasOverrides(canvasResult, datasetId);
+      setCanvasGraph(mergedCanvasResult);
 
-      const diagram = buildDiagram(canvasResult, nodeHandlers);
+      const diagram = buildDiagram(mergedCanvasResult, nodeHandlers);
       setNodes(diagram.nodes);
       setEdges(diagram.edges);
 
@@ -1732,6 +2275,16 @@ function FlowCanvas() {
               </button>
 
               <button
+                className="btn-outline-action"
+                onClick={() =>
+                  navigate("/report", { state: { datasetId, report: forecast } })
+                }
+                disabled={!forecast}
+              >
+                📄 Forecast Report
+              </button>
+
+              <button
                 className={`btn-primary-action ${activePanel?.type === "ask" ? "active" : ""}`}
                 onClick={() => togglePanel("ask")}
               >
@@ -1761,7 +2314,7 @@ function FlowCanvas() {
       </ReactFlow>
 
       {["sad", "canvasEpic", "issue", "team", "sprint", "remaining"].includes(activePanel?.type) && (
-        <DetailPanel panel={activePanel} onClose={() => setActivePanel(null)} />
+        <DetailPanel panel={activePanel} onClose={() => setActivePanel(null)} onUpdateNode={handleUpdateNode} />
       )}
 
       {activePanel?.type === "ask" && (

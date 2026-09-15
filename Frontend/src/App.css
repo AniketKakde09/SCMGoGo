@@ -2368,10 +2368,128 @@ html,
   color: #475569;
 }
 .canvas-legend-item { display: flex; align-items: center; gap: 6px; }
-.canvas-legend-line { width: 28px; border-top: 2px solid #94A3B8; }
-.canvas-legend-line.dependency { border-top: 2px dashed #DC2626; }
+.canvas-legend-line { width: 28px; border-top: 2px solid #475569; }
+.canvas-legend-line.dependency { border-top: 2px dashed #94A3B8; }
 
-/* Dependency edges are static, obstacle-routed paths. */
+/* Both hierarchy and dependency edges are obstacle-routed.
+   Hierarchy is the primary relationship; dependencies are intentionally lighter. */
 .dependency-edge-path {
-  filter: drop-shadow(0 0 2px rgba(220, 38, 38, 0.18));
+  opacity: 0.9;
+  filter: drop-shadow(0 0 1px rgba(100, 116, 139, 0.14));
+}
+
+/* =========================================================
+   Backlog readiness flags on architecture canvas issues
+   ========================================================= */
+.canvas-issue-card.has-quality-flags {
+  border-color: #F59E0B;
+  box-shadow: 0 5px 18px rgba(245, 158, 11, 0.10);
+}
+
+.canvas-issue-card.has-quality-flags:hover {
+  border-color: #D97706;
+  box-shadow: 0 8px 24px rgba(245, 158, 11, 0.16);
+}
+
+.issue-quality-flags {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: -2px 0 8px;
+  min-height: 19px;
+}
+
+.issue-quality-label {
+  flex: 0 0 auto;
+  font-size: 8px;
+  line-height: 18px;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+  color: #92400E;
+  background: #FEF3C7;
+  border: 1px solid #FDE68A;
+  border-radius: 999px;
+  padding: 0 7px;
+}
+
+.issue-quality-flag-list {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.issue-quality-flag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid #FECACA;
+  border-radius: 4px;
+  background: #FFF7ED;
+  color: #B91C1C;
+  font-size: 8px;
+  line-height: 18px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  cursor: help;
+}
+
+.issue-quality-flag-icon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.issue-quality-flag-epic { color: #B91C1C; background: #FEF2F2; border-color: #FECACA; }
+.issue-quality-flag-story-points { color: #9A3412; background: #FFF7ED; border-color: #FED7AA; }
+.issue-quality-flag-acceptance-criteria { color: #A16207; background: #FEFCE8; border-color: #FDE68A; }
+.issue-quality-flag-dod { color: #7C2D12; background: #FFF7ED; border-color: #FDBA74; }
+.issue-quality-flag-sad { color: #991B1B; background: #FEF2F2; border-color: #FCA5A5; }
+
+.detail-quality-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.detail-quality-flag {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #FECACA;
+  background: #FFF7ED;
+  color: #9A3412;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* =========================================================
+   Inline node property editor
+   ========================================================= */
+.smart-edit-banner {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid #DBEAFE;
+  border-radius: 11px;
+  background: #F8FBFF;
+}
+.smart-edit-banner strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #1E3A8A;
+  font-size: 11px;
+}
+.smart-edit-banner span {
+  color: #64748B;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.smart-panel-content > .smart-panel-footer {
+  margin: 0 -22px -34px;
 }

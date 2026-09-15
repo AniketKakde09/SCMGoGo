@@ -4,6 +4,7 @@ import SignIn from "./pages/SignIn";
 import Start from "./pages/Start";
 import UploadDataset from "./pages/UploadDataset";
 import Canvas from "./pages/Canvas";
+import ForecastReportRoute from "./pages/ForecastReportRoute";
 
 function App() {
   return (
@@ -23,6 +24,11 @@ function App() {
         <Route
           path="/upload"
           element={<UploadDataset />}
+        />
+
+        <Route
+          path="/report"
+          element={<ForecastReportRoute />}
         />
 
         <Route

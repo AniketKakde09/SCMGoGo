@@ -84,9 +84,9 @@ function UploadDataset() {
           metadata.filename || selectedFile?.name || id,
         );
 
-        setTimeout(() => {
-          navigate("/canvas", { state: { datasetId: id } });
-        }, 700);
+        // Ingestion is done. Stay on this screen and let the person
+        // choose where to go next — the canvas, or straight to the
+        // forecast report.
       })
       .catch((err) => {
         setPhase("error");
@@ -303,11 +303,36 @@ function UploadDataset() {
           <div className="auth-form">
             <div className="dataset-status-row">
               <span className="dataset-status-dot ready" />
+
               <div className="dataset-status-text">
                 <strong>ready</strong>
-                <span>Opening the canvas...</span>
+                <span>{STATUS_COPY.ready}</span>
               </div>
+
+              {datasetId && (
+                <span className="dataset-id-chip">{datasetId}</span>
+              )}
             </div>
+
+            <button
+              className="auth-button"
+              type="button"
+              onClick={() =>
+                navigate("/report", { state: { datasetId } })
+              }
+            >
+              View Forecast Report
+            </button>
+
+            <button
+              className="auth-secondary-button"
+              type="button"
+              onClick={() =>
+                navigate("/canvas", { state: { datasetId } })
+              }
+            >
+              Open Canvas
+            </button>
           </div>
         )}
 
@@ -343,7 +368,7 @@ function UploadDataset() {
         )}
 
         <div className="auth-footer">
-          Your dataset will open in the Foreman canvas
+          Ingestion builds the graph; the forecast runs on demand
         </div>
 
       </div>
