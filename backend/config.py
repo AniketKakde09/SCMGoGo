@@ -15,6 +15,14 @@ MODEL_ID = os.getenv(
     "llama-3.3-70b-versatile"
 )
 
+CLIENT_ID = os.getenv(
+    "CLIENT_ID"
+)
+
+CLIENT_SECRET = os.getenv(
+    "CLIENT_SECRET"
+)
+
 API_KEY = os.getenv(
     "API_KEY"
 )
