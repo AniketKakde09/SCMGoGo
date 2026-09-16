@@ -16,7 +16,7 @@ def build_canvas_graph(excel_path: Path | str) -> dict[str, list[dict[str, Any]]
     """Build the architecture/work-item graph used by the React Flow canvas.
 
     Hierarchy:
-        SAD Section -> Epic -> Issue (Feature/Story/Task)
+        SAD Section -> Epic -> Feature -> Story -> Task
 
     Dependency edges are kept separate so the UI can render them differently
     from the structural hierarchy.
@@ -58,6 +58,11 @@ def build_canvas_graph(excel_path: Path | str) -> dict[str, list[dict[str, Any]]
             "sprint_id": clean(row.get("SprintID")),
             "assignee_id": clean(row.get("AssigneeID")),
             "labels": clean(row.get("Labels")),
+            "description": clean(row.get("Description")),
+            "acceptance_criteria": clean(row.get("AcceptanceCriteria")),
+            "hasAcceptanceCriteria": clean(row.get("HasAcceptanceCriteria")),
+            "dod": clean(row.get("DefinitionOfDone") or row.get("DoD")),
+            "hasDoD": clean(row.get("HasDoD")),
         }
 
     epics = [item for item in items.values() if item["type"].lower() == "epic"]
@@ -67,7 +72,7 @@ def build_canvas_graph(excel_path: Path | str) -> dict[str, list[dict[str, Any]]
     # section is retained on each item as a fallback for datasets where a
     # parent record is absent or inconsistent.
     hierarchy_edges: list[dict[str, Any]] = []
-    epic_ids = {e["id"] for e in epics}
+    item_ids = set(items)
     sad_ids = {s["id"] for s in sad_sections}
 
     for epic in epics:
@@ -83,7 +88,9 @@ def build_canvas_graph(excel_path: Path | str) -> dict[str, list[dict[str, Any]]
 
     for issue in issues:
         parent_id = issue["parent_id"]
-        if parent_id in epic_ids:
+        if parent_id in item_ids:
+            # Preserve the workbook's real hierarchy instead of flattening
+            # every Feature/Story/Task directly under its Epic.
             hierarchy_edges.append({
                 "id": f"hierarchy-{parent_id}-{issue['id']}",
                 "source": parent_id,
@@ -92,7 +99,7 @@ def build_canvas_graph(excel_path: Path | str) -> dict[str, list[dict[str, Any]]
                 "relation": "contains",
             })
         elif issue["sad_section_id"] in sad_ids:
-            # Keep orphaned issues visible in the correct architecture area.
+            # Keep true orphans visible so Foreman can flag them for refinement.
             hierarchy_edges.append({
                 "id": f"hierarchy-{issue['sad_section_id']}-{issue['id']}",
                 "source": issue["sad_section_id"],

@@ -2493,3 +2493,160 @@ html,
 .smart-panel-content > .smart-panel-footer {
   margin: 0 -22px -34px;
 }
+
+/* =========================================================
+   Dataset Smart Canvas — aligned with Planning Playground
+   Visual-only refinement: existing graph/actions/panels stay intact.
+   ========================================================= */
+.dataset-canvas-shell{
+  width:100vw;height:100vh;min-width:980px;overflow:hidden;
+  display:flex;flex-direction:column;background:#f7f8fb;color:#172033;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.dataset-canvas-topbar{
+  height:64px;min-height:64px;box-sizing:border-box;padding:0 20px;
+  display:flex;align-items:center;gap:14px;background:#fff;border-bottom:1px solid #e6e9ef;
+  position:relative;z-index:30;
+}
+.dataset-canvas-brand{
+  background:#111827;color:#fff;border-radius:10px;padding:10px 14px;
+  font-size:13px;font-weight:800;letter-spacing:.01em;
+}
+.dataset-canvas-title{display:flex;flex-direction:column;min-width:0}
+.dataset-canvas-title strong{font-size:15px;line-height:1.2;color:#172033}
+.dataset-canvas-title span{font-size:11.5px;color:#778195;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dataset-canvas-status{
+  margin-left:auto;max-width:330px;display:flex;align-items:center;gap:7px;
+  border:1px solid #e2e8f0;background:#f8fafc;border-radius:999px;padding:7px 10px;
+  color:#667085;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.dataset-canvas-status-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 3px #dcfce7}
+.dataset-canvas-stage{position:relative;flex:1;min-height:0;overflow:hidden;background:#f8fafc}
+.dataset-canvas-stage>.react-flow{width:100%;height:100%;background:#fafbfc}
+.dataset-canvas-stage .react-flow__renderer{background:radial-gradient(circle at 50% 0%,rgba(99,102,241,.035),transparent 38%)}
+.dataset-canvas-stage .react-flow__controls,
+.dataset-canvas-stage .react-flow__minimap{
+  border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;background:#fff;
+  box-shadow:0 8px 24px rgba(15,23,42,.08);
+}
+.dataset-canvas-stage .react-flow__minimap{width:180px;height:112px}
+.dataset-canvas-stage .panel-actions{
+  display:flex;align-items:center;gap:7px;max-width:calc(100vw - 32px);
+  padding:7px;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);
+  border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.08);
+}
+.dataset-canvas-stage .panel-actions .dataset-chip{display:none}
+.dataset-canvas-stage .btn-outline-action,
+.dataset-canvas-stage .btn-primary-action{min-height:34px;border-radius:8px;white-space:nowrap}
+.dataset-canvas-stage .summary-strip{
+  border:1px solid #e2e8f0;border-radius:12px;background:rgba(255,255,255,.95);
+  box-shadow:0 8px 24px rgba(15,23,42,.075);overflow:hidden;
+}
+.dataset-canvas-stage .canvas-legend{border-radius:11px;box-shadow:0 6px 18px rgba(15,23,42,.06)}
+.canvas-architecture-card,.canvas-issue-card{
+  border-radius:14px;box-shadow:0 7px 22px rgba(15,23,42,.075);
+  transition:box-shadow .15s ease,transform .15s ease,border-color .15s ease;
+}
+.canvas-architecture-card:hover,.canvas-issue-card:hover{
+  transform:translateY(-1px);box-shadow:0 11px 28px rgba(15,23,42,.12);
+}
+.canvas-card-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.canvas-card-summary{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.canvas-issue-title{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* Make the existing detail/editor panel feel like the Playground inspector. */
+.smart-node-panel{
+  width:min(400px,calc(100vw - 24px));border-radius:14px!important;
+  box-shadow:0 18px 50px rgba(15,23,42,.14)!important;
+}
+.smart-edit-banner{border-radius:12px;background:#f8faff;border-color:#dbe4ff}
+.smart-field select,.smart-field input,.smart-field textarea{border-radius:9px!important}
+
+@media(max-width:1180px){
+  .dataset-canvas-title span{display:none}
+  .dataset-canvas-status{max-width:220px}
+  .dataset-canvas-stage .panel-actions{gap:5px}
+  .dataset-canvas-stage .btn-outline-action,.dataset-canvas-stage .btn-primary-action{padding-left:9px;padding-right:9px;font-size:11px}
+}
+
+/* =========================================================
+   Dataset Canvas — large backlog overview / tidy-tree density
+   ========================================================= */
+.dataset-canvas-stage .react-flow__node-sad,
+.dataset-canvas-stage .react-flow__node-canvasEpic,
+.dataset-canvas-stage .react-flow__node-issue{
+  transition:filter .15s ease;
+}
+
+/* Cards stay informative at normal zoom, but are compact enough for a
+   meaningful 100+ ticket fit-to-screen overview. Full detail remains in the
+   Inspector on double click. */
+.dataset-canvas-stage .canvas-architecture-card,
+.dataset-canvas-stage .canvas-issue-card{
+  padding:10px 11px;
+  border-radius:10px;
+  box-shadow:0 3px 10px rgba(15,23,42,.07);
+}
+.dataset-canvas-stage .canvas-card-header{
+  gap:5px;
+  margin-bottom:6px;
+  min-height:17px;
+}
+.dataset-canvas-stage .canvas-card-title{
+  font-size:12.5px;
+  line-height:1.22;
+  -webkit-line-clamp:2;
+}
+.dataset-canvas-stage .canvas-issue-title{
+  font-size:11.5px;
+  line-height:1.2;
+  -webkit-line-clamp:2;
+}
+.dataset-canvas-stage .canvas-card-id{
+  font-size:8.5px;
+}
+.dataset-canvas-stage .canvas-card-meta{
+  margin-top:4px;
+  font-size:9px;
+  line-height:1.2;
+}
+.dataset-canvas-stage .canvas-card-summary{
+  display:none;
+}
+.dataset-canvas-stage .badge{
+  font-size:7.5px;
+  padding:2px 5px;
+}
+.dataset-canvas-stage .sp-pill{
+  font-size:8px;
+  padding:2px 5px;
+}
+.dataset-canvas-stage .issue-quality-flags{
+  gap:4px;
+  margin:0 0 4px;
+  min-height:14px;
+  overflow:hidden;
+}
+.dataset-canvas-stage .issue-quality-label{
+  font-size:6.5px;
+  line-height:13px;
+  padding:0 4px;
+}
+.dataset-canvas-stage .issue-quality-flag-list{
+  gap:3px;
+  overflow:hidden;
+  flex-wrap:nowrap;
+}
+.dataset-canvas-stage .issue-quality-flag{
+  font-size:7px;
+  line-height:13px;
+  padding:0 3px;
+}
+.dataset-canvas-stage .canvas-overview-action{
+  background:#f8fafc;
+}
+.dataset-canvas-stage .canvas-overview-action.active{
+  border-color:#6366f1;
+  background:#eef2ff;
+  color:#4338ca;
+}

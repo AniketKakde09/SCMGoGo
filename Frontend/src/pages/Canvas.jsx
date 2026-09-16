@@ -17,6 +17,7 @@ import {
   getSmoothStepPath,
   useReactFlow,
   ReactFlowProvider,
+  MiniMap,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
@@ -208,165 +209,179 @@ function buildObstacleAwareRoute(sourceId, targetId, sourceX, sourceY, targetX, 
   return [[sourceX, sourceY], [sourceX, corridorY], [targetX, corridorY], [targetX, targetY]];
 }
 
-function buildDiagram(canvasGraph, handlers) {
+function buildDiagram(canvasGraph, handlers, expandedEpicIds = new Set()) {
   const nodes = [];
   const edges = [];
   const sadSections = canvasGraph?.sad_sections || [];
   const epics = canvasGraph?.epics || [];
   const issues = canvasGraph?.issues || [];
+  const allItems = [...epics, ...issues];
+  const itemById = new Map(allItems.map((item) => [String(item.id), item]));
+  const sadById = new Map(sadSections.map((sad) => [String(sad.id), sad]));
 
-  const epicById = new Map(epics.map((e) => [e.id, e]));
-  const issuesByEpic = new Map();
-
-  issues.forEach((issue) => {
-    const epicId = getIssueEpicId(issue, issues, epics);
-    const sadId = issue.sad_section_id || issue.sadSectionId || "UNASSIGNED";
-    const parent = epicId && epicById.has(epicId)
-      ? epicId
-      : `sad-${sadId}`;
-    if (!issuesByEpic.has(parent)) issuesByEpic.set(parent, []);
-    issuesByEpic.get(parent).push(issue);
-  });
-
-  const epicsBySad = new Map();
-  epics.forEach((epic) => {
-    const key = epic.sad_section_id || "UNASSIGNED";
-    if (!epicsBySad.has(key)) epicsBySad.set(key, []);
-    epicsBySad.get(key).push(epic);
-  });
-
-  // The canvas is intentionally laid out as three visual columns:
-  // S-AD -> Epic -> Issues. Issues are packed into a small grid per Epic
-  // rather than one long vertical list. This prevents cards from stacking
-  // on top of each other when an Epic has many stories/tasks.
-  const SAD_WIDTH = 300;
-  const EPIC_WIDTH = 300;
-  const ISSUE_WIDTH = 280;
-  const ISSUE_HEIGHT = 122;
-  const X_GAP = 120;
-  const Y_GAP = 44;
-  const ISSUE_COLS = 3;
-  const ISSUE_X_GAP = 48;
-  const ISSUE_Y_GAP = 46;
-  const SAD_HEIGHT = 190;
-  const EPIC_HEIGHT = 170;
-  const EPIC_GAP = 44;
-  const GROUP_GAP = 120;
-  const ISSUE_AREA_X = SAD_WIDTH + X_GAP + EPIC_WIDTH + X_GAP;
-  const ISSUE_ROW_HEIGHT = ISSUE_HEIGHT + ISSUE_Y_GAP;
-  const groupWidth = ISSUE_AREA_X + ISSUE_COLS * ISSUE_WIDTH + (ISSUE_COLS - 1) * ISSUE_X_GAP;
-
-  let yCursor = 0;
-
-  const addIssues = (issueList, parentNodeId, baseY) => {
-    issueList.forEach((issue, issueIndex) => {
-      const row = Math.floor(issueIndex / ISSUE_COLS);
-      const col = issueIndex % ISSUE_COLS;
-      const issueNodeId = issue.id;
-
-      nodes.push({
-        id: issueNodeId,
-        type: "issue",
-        position: {
-          x: ISSUE_AREA_X + col * (ISSUE_WIDTH + ISSUE_X_GAP),
-          y: baseY + row * ISSUE_ROW_HEIGHT,
-        },
-        data: {
-          issue,
-          allIssues: issues,
-          epics,
-          onOpen: handlers.onOpenIssue,
-        },
-        draggable: true,
-        style: { width: ISSUE_WIDTH, height: ISSUE_HEIGHT },
-      });
-
-      edges.push(makeHierarchyEdge(parentNodeId, issueNodeId));
-    });
-
-    return Math.max(1, Math.ceil(issueList.length / ISSUE_COLS));
+  // Backend hierarchy remains authoritative. The visual layout below is a
+  // compact tidy-tree: parents are centred over their children and only leaf
+  // nodes consume vertical rows. This removes the large blank areas produced
+  // by the old "one row per node" DFS layout on 100+ ticket datasets.
+  const children = new Map();
+  const link = (source, target) => {
+    if (!source || !target) return;
+    source = String(source);
+    target = String(target);
+    if (!children.has(source)) children.set(source, []);
+    if (!children.get(source).includes(target)) children.get(source).push(target);
   };
 
-  sadSections.forEach((sad) => {
-    const sadId = sad.id;
-    const sadNodeId = sadId;
-    const sadEpics = epicsBySad.get(sadId) || [];
-
-    // Measure the whole SAD group first. This is the important part that
-    // avoids the old max(group) calculation, which could be smaller than
-    // the sum of several Epic blocks and caused later Epics to overlap.
-    const epicLayouts = [];
-    let groupContentHeight = SAD_HEIGHT;
-
-    sadEpics.forEach((epic) => {
-      const epicIssues = issuesByEpic.get(epic.id) || [];
-      const rows = Math.max(1, Math.ceil(epicIssues.length / ISSUE_COLS));
-      const issueBlockHeight = rows * ISSUE_ROW_HEIGHT - ISSUE_Y_GAP;
-      const blockHeight = Math.max(EPIC_HEIGHT, issueBlockHeight);
-
-      epicLayouts.push({ epic, epicIssues, rows, blockHeight });
-      groupContentHeight += blockHeight + EPIC_GAP;
-    });
-
-    const orphanIssues = issuesByEpic.get(`sad-${sadId}`) || [];
-    if (orphanIssues.length) {
-      const rows = Math.ceil(orphanIssues.length / ISSUE_COLS);
-      groupContentHeight += Math.max(SAD_HEIGHT, rows * ISSUE_ROW_HEIGHT - ISSUE_Y_GAP) + EPIC_GAP;
-    }
-
-    const groupHeight = Math.max(SAD_HEIGHT, groupContentHeight - EPIC_GAP);
-    const sadCenterY = yCursor + groupHeight / 2 - SAD_HEIGHT / 2;
-
-    nodes.push({
-      id: sadNodeId,
-      type: "sad",
-      position: { x: 0, y: sadCenterY },
-      data: { sad, onOpen: handlers.onOpenSad },
-      draggable: true,
-      style: { width: SAD_WIDTH, height: SAD_HEIGHT },
-    });
-
-    let epicCursor = yCursor;
-    epicLayouts.forEach(({ epic, epicIssues, blockHeight }) => {
-      const epicNodeId = epic.id;
-      const epicY = epicCursor + Math.max(0, (blockHeight - EPIC_HEIGHT) / 2);
-
-      nodes.push({
-        id: epicNodeId,
-        type: "canvasEpic",
-        position: { x: SAD_WIDTH + X_GAP, y: epicY },
-        data: { epic, issueCount: epicIssues.length, onOpen: handlers.onOpenEpic },
-        draggable: true,
-        style: { width: EPIC_WIDTH, height: EPIC_HEIGHT },
-      });
-
-      edges.push(makeHierarchyEdge(sadNodeId, epicNodeId));
-      addIssues(epicIssues, epicNodeId, epicCursor);
-      epicCursor += blockHeight + EPIC_GAP;
-    });
-
-    // Issues without a valid Epic parent still get their own aligned block.
-    if (orphanIssues.length) {
-      const orphanRows = Math.ceil(orphanIssues.length / ISSUE_COLS);
-      const orphanBlockHeight = Math.max(SAD_HEIGHT, orphanRows * ISSUE_ROW_HEIGHT - ISSUE_Y_GAP);
-      addIssues(orphanIssues, sadNodeId, epicCursor);
-    }
-
-    yCursor += groupHeight + GROUP_GAP;
+  epics.forEach((epic) => link(epic.sad_section_id || epic.sadSectionId, epic.id));
+  issues.forEach((issue) => {
+    const parent = getIssueParentId(issue);
+    if (parent && itemById.has(String(parent))) link(parent, issue.id);
+    else link(issue.sad_section_id || issue.sadSectionId, issue.id);
   });
 
-  // Dependencies are deliberately separate from hierarchy edges. They are
-  // animated below so the direction of a blocking/depends-on relationship
-  // is visible at a glance.
-  const nodeIds = new Set(nodes.map((n) => n.id));
-  (canvasGraph?.dependencies || []).forEach((dependency, index) => {
-    if (!dependency.source || !dependency.target) return;
-    if (!nodeIds.has(dependency.source) || !nodeIds.has(dependency.target)) return;
+  // Compact dimensions are intentional: the full 171-ticket workbook should
+  // have a useful overview, while clicking a node still opens the full editor.
+  const DEPTH_GAP = 250;
+  const CARD_WIDTH = 210;
+  const CARD_HEIGHT = 78;
+  const ARCH_WIDTH = 220;
+  const ARCH_HEIGHT = 88;
+  const LEAF_GAP = 18;
+  const TREE_GAP = 52;
+  const ROW_STEP = CARD_HEIGHT + LEAF_GAP;
 
+  const positioned = new Set();
+  const positionById = new Map();
+  let nextLeafY = 0;
+
+  const descendantCount = (id, seen = new Set()) => {
+    id = String(id);
+    if (seen.has(id)) return 0;
+    const nextSeen = new Set(seen);
+    nextSeen.add(id);
+    return (children.get(id) || []).reduce(
+      (total, child) => total + 1 + descendantCount(child, nextSeen),
+      0,
+    );
+  };
+
+  const pushNode = (id, depth, y) => {
+    const x = Math.max(0, depth) * DEPTH_GAP;
+    if (sadById.has(id)) {
+      const sad = sadById.get(id);
+      nodes.push({
+        id,
+        type: "sad",
+        position: { x, y },
+        data: { sad, onOpen: handlers.onOpenSad },
+        draggable: true,
+        style: { width: ARCH_WIDTH, height: ARCH_HEIGHT },
+      });
+      return;
+    }
+
+    const item = itemById.get(id);
+    if (!item) return;
+    const type = String(item.type || "").toLowerCase();
+    if (type === "epic") {
+      nodes.push({
+        id,
+        type: "canvasEpic",
+        position: { x, y },
+        data: { epic: item, issueCount: descendantCount(id), onOpen: handlers.onOpenEpic },
+        draggable: true,
+        style: { width: ARCH_WIDTH, height: ARCH_HEIGHT },
+      });
+    } else {
+      nodes.push({
+        id,
+        type: "issue",
+        position: { x, y },
+        data: { issue: item, allIssues: issues, epics, onOpen: handlers.onOpenIssue },
+        draggable: true,
+        style: { width: CARD_WIDTH, height: CARD_HEIGHT },
+      });
+    }
+  };
+
+  const layoutSubtree = (id, depth, ancestry = new Set()) => {
+    id = String(id);
+    if (positionById.has(id)) return positionById.get(id).y;
+
+    // Defensive cycle handling: malformed hierarchy data remains visible and
+    // cannot trap the Canvas in recursive layout.
+    if (ancestry.has(id)) {
+      const y = nextLeafY;
+      nextLeafY += ROW_STEP;
+      return y;
+    }
+
+    const nextAncestry = new Set(ancestry);
+    nextAncestry.add(id);
+    const currentItem = itemById.get(id);
+    const currentType = String(currentItem?.type || "").toLowerCase();
+    // Dataset overview starts compact: S-AD + Epic only. Expanding an Epic
+    // reveals its complete Feature -> Story/Task subtree in one click.
+    const mayShowChildren = currentType !== "epic" || expandedEpicIds.has(id);
+    const validChildren = mayShowChildren
+      ? (children.get(id) || []).filter(
+          (child) => (itemById.has(String(child)) || sadById.has(String(child))) && !nextAncestry.has(String(child)),
+        )
+      : [];
+
+    let y;
+    if (!validChildren.length) {
+      y = nextLeafY;
+      nextLeafY += ROW_STEP;
+    } else {
+      const childYs = validChildren.map((child) => layoutSubtree(child, depth + 1, nextAncestry));
+      y = (Math.min(...childYs) + Math.max(...childYs)) / 2;
+    }
+
+    positionById.set(id, { x: depth * DEPTH_GAP, y });
+    positioned.add(id);
+    pushNode(id, depth, y);
+
+    validChildren.forEach((child) => {
+      if (positionById.has(String(child))) edges.push(makeHierarchyEdge(id, String(child)));
+    });
+    return y;
+  };
+
+  // Each S-AD is one compact tree. A small gap separates domains without
+  // wasting an entire row for every intermediate Epic/Feature parent.
+  sadSections.forEach((sad) => {
+    const before = nextLeafY;
+    layoutSubtree(String(sad.id), 0);
+    if (nextLeafY === before) nextLeafY += ROW_STEP;
+    nextLeafY += TREE_GAP;
+  });
+
+  // Keep malformed/orphaned records visible as a final compact forest.
+  allItems.forEach((item) => {
+    const id = String(item.id);
+    if (positioned.has(id)) return;
+
+    // Do not re-add a legitimate descendant that is intentionally hidden
+    // behind a collapsed Epic. Only genuine roots/orphans belong here.
+    const parentId = getIssueParentId(item);
+    const hasKnownParent = parentId && itemById.has(String(parentId));
+    const type = String(item.type || "").toLowerCase();
+    const epicHasSadParent = type === "epic" && Boolean(item.sad_section_id || item.sadSectionId);
+    if (hasKnownParent || epicHasSadParent) return;
+
+    const depth = type === "epic" ? 1 : 2;
+    layoutSubtree(id, depth);
+    nextLeafY += LEAF_GAP;
+  });
+
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  (canvasGraph?.dependencies || []).forEach((dependency, index) => {
+    if (!nodeIds.has(String(dependency.source)) || !nodeIds.has(String(dependency.target))) return;
     edges.push({
       id: dependency.id || `dependency-${dependency.source}-${dependency.target}-${index}`,
-      source: dependency.source,
-      target: dependency.target,
+      source: String(dependency.source),
+      target: String(dependency.target),
       type: "dependency",
       data: { dependency },
       markerEnd: { type: MarkerType.ArrowClosed, color: "#94A3B8" },
@@ -374,7 +389,13 @@ function buildDiagram(canvasGraph, handlers) {
     });
   });
 
-  return { nodes, edges, width: groupWidth };
+  const maxDepth = Math.max(0, ...nodes.map((node) => Math.round((node.position?.x || 0) / DEPTH_GAP)));
+  return {
+    nodes,
+    edges,
+    width: maxDepth * DEPTH_GAP + ARCH_WIDTH,
+    height: Math.max(nextLeafY, ARCH_HEIGHT),
+  };
 }
 function makeHierarchyEdge(source, target) {
   return {
@@ -967,17 +988,17 @@ function getAvailableParentOptions(issue, allIssues = [], epics = []) {
   const type = String(issue?.type || issue?.issue_type || "").toLowerCase();
   const issueItems = allIssues.filter((item) => item !== issue);
 
-  if (["feature", "story"].includes(type)) {
-    return epics.map((epic) => ({ id: getItemId(epic), label: getItemTitle(epic) })).filter((x) => x.id);
+  if (type === "feature") {
+    return epics.map((epic) => ({ id: getItemId(epic), label: `${getItemTitle(epic)} (${getItemId(epic)})` })).filter((x) => x.id);
   }
-
+  if (type === "story") {
+    return issueItems.filter((item) => String(item?.type || item?.issue_type || "").toLowerCase() === "feature")
+      .map((item) => ({ id:getItemId(item), label:`${getItemTitle(item)} (${getItemId(item)})` })).filter((x) => x.id);
+  }
   if (["task", "sub-task", "subtask"].includes(type)) {
-    return issueItems
-      .filter((item) => ["story", "task", "sub-task", "subtask"].includes(String(item?.type || item?.issue_type || "").toLowerCase()))
-      .map((item) => ({ id: getItemId(item), label: `${getItemTitle(item)} (${getItemId(item)})` }))
-      .filter((x) => x.id);
+    return issueItems.filter((item) => ["feature", "story"].includes(String(item?.type || item?.issue_type || "").toLowerCase()))
+      .map((item) => ({ id:getItemId(item), label:`${getItemTitle(item)} (${getItemId(item)})` })).filter((x) => x.id);
   }
-
   return [];
 }
 
@@ -986,8 +1007,8 @@ function applyIssueEdits(issue, values) {
   const storyPoints = values.storyPoints === "" ? null : Number(values.storyPoints);
 
   const issueType = String(issue?.type || issue?.issue_type || "").toLowerCase();
-  const normalizedParentId = ["feature", "story"].includes(issueType)
-    ? (values.epicId || "")
+  const normalizedParentId = issueType === "feature"
+    ? (values.epicId || values.parentId || "")
     : (values.parentId || "");
 
   return {
@@ -1095,7 +1116,7 @@ function EditableIssueBody({ panel, onSave }) {
 
       {parentOptions.length > 0 && (
         <div className="smart-field">
-          <label>{["task", "sub-task", "subtask"].includes(type) ? "Parent Story / Task" : "Parent Epic"}</label>
+          <label>{type === "story" ? "Parent Feature" : ["task", "sub-task", "subtask"].includes(type) ? "Parent Feature / Story" : "Parent Epic"}</label>
           <select value={values.parentId} onChange={(e) => update("parentId", e.target.value)}>
             <option value="">— Not assigned —</option>
             {parentOptions.map((parent) => <option key={parent.id} value={parent.id}>{parent.label}</option>)}
@@ -1269,7 +1290,7 @@ function EditableEpicBody({ panel, onSave }) {
 // Detail Panel (Team / Sprint / Remaining)
 // =========================================================
 
-function DetailPanel({ panel, onClose, onUpdateNode }) {
+function DetailPanel({ panel, onClose, onUpdateNode, onOpenInPlayground }) {
   if (!panel) return null;
 
   let iconClass = "epic";
@@ -1494,6 +1515,14 @@ function DetailPanel({ panel, onClose, onUpdateNode }) {
       </div>
 
       <div className="smart-panel-content">{body}</div>
+      {["canvasEpic", "issue"].includes(panel.type) && (
+        <div className="smart-panel-footer">
+          <span className="smart-change-state">Use this existing work as grounded planning context</span>
+          <button type="button" className="smart-save" onClick={() => onOpenInPlayground?.(panel)}>
+            Open in Playground
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
@@ -1913,6 +1942,16 @@ function FlowCanvas() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  // Start with an executive overview: only S-AD sections and Epics.
+  // Clicking an Epic toggles its complete descendant subtree.
+  const [expandedEpicIds, setExpandedEpicIds] = useState(() => new Set());
+  // Keep the default overview hierarchy-first. Dependency lines are valuable,
+  // but showing all of them over 171 tickets makes the tree harder to scan.
+  const [showDependencies, setShowDependencies] = useState(false);
+  const visibleEdges = useMemo(
+    () => showDependencies ? edges : edges.filter((edge) => edge.type !== "dependency"),
+    [edges, showDependencies],
+  );
 
   const [activePanel, setActivePanel] = useState(null);
   const [jsonOutput, setJsonOutput] = useState(null);
@@ -1955,7 +1994,7 @@ function FlowCanvas() {
     localStorage.setItem(`foremanCanvasOverrides:${datasetId}`, JSON.stringify(overrides));
 
     setCanvasGraph(nextGraph);
-    const diagram = buildDiagram(nextGraph, nodeHandlers);
+    const diagram = buildDiagram(nextGraph, nodeHandlers, expandedEpicIds);
     setNodes(diagram.nodes);
     setEdges(diagram.edges);
 
@@ -2013,12 +2052,12 @@ function FlowCanvas() {
       const mergedCanvasResult = applyCanvasOverrides(canvasResult, datasetId);
       setCanvasGraph(mergedCanvasResult);
 
-      const diagram = buildDiagram(mergedCanvasResult, nodeHandlers);
+      const diagram = buildDiagram(mergedCanvasResult, nodeHandlers, expandedEpicIds);
       setNodes(diagram.nodes);
       setEdges(diagram.edges);
 
       setTimeout(() => {
-        fitView({ padding: 0.12, duration: 400 });
+        fitView({ padding: 0.035, minZoom: 0.03, maxZoom: 0.7, duration: 450 });
       }, 80);
     } catch (err) {
       setError(err.message || "Failed to load the canvas.");
@@ -2053,12 +2092,12 @@ function FlowCanvas() {
       const mergedCanvasResult = applyCanvasOverrides(canvasResult, datasetId);
       setCanvasGraph(mergedCanvasResult);
 
-      const diagram = buildDiagram(mergedCanvasResult, nodeHandlers);
+      const diagram = buildDiagram(mergedCanvasResult, nodeHandlers, expandedEpicIds);
       setNodes(diagram.nodes);
       setEdges(diagram.edges);
 
       setTimeout(() => {
-        fitView({ padding: 0.12, duration: 400 });
+        fitView({ padding: 0.035, minZoom: 0.03, maxZoom: 0.7, duration: 450 });
       }, 80);
     } catch (err) {
       setError(err.message || "Forecast failed.");
@@ -2170,22 +2209,72 @@ function FlowCanvas() {
   // Render
   // =======================================================
 
+  const handleCanvasNodeClick = useCallback((_event, node) => {
+    if (node?.type !== "canvasEpic") return;
+
+    setExpandedEpicIds((current) => {
+      const next = new Set(current);
+      if (next.has(node.id)) next.delete(node.id);
+      else next.add(node.id);
+
+      if (canvasGraph) {
+        const diagram = buildDiagram(canvasGraph, nodeHandlers, next);
+        setNodes(diagram.nodes);
+        setEdges(diagram.edges);
+        window.requestAnimationFrame(() => {
+          fitView({ padding: 0.06, minZoom: 0.03, maxZoom: 0.9, duration: 350 });
+        });
+      }
+      return next;
+    });
+  }, [canvasGraph, nodeHandlers, setNodes, setEdges, fitView]);
+
   return (
-    <>
+    <div className="dataset-canvas-shell">
+      <div className="dataset-canvas-topbar">
+        <div className="dataset-canvas-brand">Foreman</div>
+        <div className="dataset-canvas-title">
+          <strong>Dataset Smart Canvas</strong>
+          <span>S-AD + Epic overview · Click an Epic to expand/collapse its full child tree.</span>
+        </div>
+        <div className="dataset-canvas-status">
+          <span className="dataset-canvas-status-dot" />
+          <span>{datasetMeta?.filename || datasetId || "Dataset"}</span>
+        </div>
+      </div>
+      <div className="dataset-canvas-stage">
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={visibleEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeClick={handleCanvasNodeClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionMode={ConnectionMode.Loose}
         nodesConnectable={false}
+        minZoom={0.03}
+        maxZoom={2}
+        fitView
+        fitViewOptions={{ padding: 0.035, minZoom: 0.03, maxZoom: 0.7 }}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Lines} color="#E2E8F0" gap={28} size={1} />
 
         <Controls />
+        <MiniMap
+          pannable
+          zoomable
+          nodeStrokeWidth={2}
+          nodeColor={(node) => {
+            if (node.type === "sad") return "#CBD5E1";
+            if (node.type === "canvasEpic") return "#DDD6FE";
+            const issueType = String(node.data?.issue?.type || "").toLowerCase();
+            if (issueType === "feature") return "#D1FAE5";
+            if (issueType === "task") return "#FEF3C7";
+            return "#DBEAFE";
+          }}
+        />
 
         <Panel position="bottom-left">
           <div className="canvas-legend">
@@ -2266,6 +2355,22 @@ function FlowCanvas() {
 
           {!loading && (
             <>
+              <button
+                className="btn-outline-action canvas-overview-action"
+                onClick={() => fitView({ padding: 0.035, minZoom: 0.03, maxZoom: 0.7, duration: 450 })}
+                title="Fit the complete hierarchy into the current screen"
+              >
+                ⛶ Fit all
+              </button>
+
+              <button
+                className={`btn-outline-action canvas-overview-action ${showDependencies ? "active" : ""}`}
+                onClick={() => setShowDependencies((value) => !value)}
+                title="Toggle dependency/blocking relationships without changing the hierarchy"
+              >
+                {showDependencies ? "⇢ Dependencies on" : "⇢ Dependencies"}
+              </button>
+
               <button className="btn-outline-action" onClick={handleReingest}>
                 ↻ Re-ingest
               </button>
@@ -2305,6 +2410,10 @@ function FlowCanvas() {
                 📥 Intake
               </button>
 
+              <button className="btn-outline-action" onClick={() => navigate("/playground", { state: { datasetId } })}>
+                ✦ Planning Playground
+              </button>
+
               <button className="btn-outline-action" onClick={() => navigate("/start")}>
                 Change Dataset
               </button>
@@ -2312,9 +2421,11 @@ function FlowCanvas() {
           )}
         </Panel>
       </ReactFlow>
+      </div>
 
       {["sad", "canvasEpic", "issue", "team", "sprint", "remaining"].includes(activePanel?.type) && (
-        <DetailPanel panel={activePanel} onClose={() => setActivePanel(null)} onUpdateNode={handleUpdateNode} />
+        <DetailPanel panel={activePanel} onClose={() => setActivePanel(null)} onUpdateNode={handleUpdateNode}
+          onOpenInPlayground={(panel) => navigate("/playground", { state: { datasetId, contextItem: panel.issue || panel.epic } })} />
       )}
 
       {activePanel?.type === "ask" && (
@@ -2357,7 +2468,7 @@ function FlowCanvas() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
