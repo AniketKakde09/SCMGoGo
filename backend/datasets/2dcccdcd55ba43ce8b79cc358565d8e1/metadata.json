@@ -1,0 +1,18 @@
+{
+  "dataset_id": "2dcccdcd55ba43ce8b79cc358565d8e1",
+  "filename": "Foreman_Guardrail_Test_Dataset.xlsx",
+  "status": "ready",
+  "created_at": "2026-09-16T20:04:37.866158+00:00",
+  "updated_at": "2026-09-16T20:04:47.229352+00:00",
+  "collection_name": "foreman_2dcccdcd55ba43ce8b79cc358565d8e1",
+  "sanitized": true,
+  "sanitized_at": "2026-09-16T20:04:44.053084+00:00",
+  "error": null,
+  "document_count": 45,
+  "graph": {
+    "nodes": 12,
+    "edges": 4,
+    "cycles": [],
+    "missing_ticket_nodes": []
+  }
+}

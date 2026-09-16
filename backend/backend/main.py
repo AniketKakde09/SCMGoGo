@@ -20,6 +20,7 @@ from search import ForemanSearch
 from forecast import generate_forecast
 from canvas import build_canvas_graph
 from jira_sync import router as jira_router
+from security import sanitize_response_payload, sanitize_text, security_status
 from sad_workflow import extract_document, generate_proposal, MAX_BYTES
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -76,6 +77,8 @@ class DatasetManager:
 
     def paths(self, dataset_id: str) -> dict[str, Path]:
         root = self.root(dataset_id)
+        # dataset.xlsx is always the sanitized workbook. The raw upload is
+        # never retained on disk after the upload request completes.
         return {
             "root": root,
             "excel": root / "dataset.xlsx",
@@ -107,6 +110,7 @@ class DatasetManager:
             "created_at": now,
             "updated_at": now,
             "collection_name": COLLECTION_PREFIX + dataset_id,
+            "sanitized": False,
         })
         return dataset_id, paths
 
@@ -137,6 +141,21 @@ def ingest_dataset(dataset_id: str) -> None:
     with lock:
         manager.update_status(dataset_id, "ingesting", error=None)
         try:
+            # New uploads are sanitized before they reach this background
+            # task. For older dataset workspaces created before the
+            # sanitized-only storage change, migrate dataset.xlsx in place
+            # once before indexing so a legacy raw workbook cannot be
+            # accidentally ingested.
+            if not metadata.get("sanitized", False):
+                from ingest import sanitize_workbook
+                migration_path = paths["root"] / ".sanitize_migration.xlsx"
+                sanitize_workbook(paths["excel"], migration_path)
+                os.replace(migration_path, paths["excel"])
+                metadata = manager.read_metadata(dataset_id)
+                metadata["sanitized"] = True
+                metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
+                manager.write_metadata(dataset_id, metadata)
+
             result = ingest(
                 reset=True,
                 excel_path=paths["excel"],
@@ -159,16 +178,35 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/security/status")
+def security():
+    return security_status()
+
+
 @app.post("/datasets", status_code=202)
 async def upload_dataset(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Upload an Excel .xlsx or .xls dataset")
 
     dataset_id, paths = manager.create(file.filename)
+    temp_upload = paths["root"] / f".raw_upload{Path(file.filename).suffix.lower()}"
     try:
-        with paths["excel"].open("wb") as handle:
+        # Write the upload only to a temporary file, sanitize it, then keep
+        # only the sanitized workbook as dataset.xlsx.
+        with temp_upload.open("wb") as handle:
             shutil.copyfileobj(file.file, handle)
+
+        from ingest import sanitize_workbook
+        sanitize_workbook(temp_upload, paths["excel"])
+        temp_upload.unlink(missing_ok=True)
+
+        metadata = manager.read_metadata(dataset_id)
+        metadata["sanitized"] = True
+        metadata["sanitized_at"] = datetime.now(timezone.utc).isoformat()
+        metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
+        manager.write_metadata(dataset_id, metadata)
     except Exception:
+        temp_upload.unlink(missing_ok=True)
         shutil.rmtree(paths["root"], ignore_errors=True)
         raise
 
@@ -195,10 +233,12 @@ def dataset_status(dataset_id: str):
 @app.post("/datasets/{dataset_id}/search")
 def semantic_search(dataset_id: str, request: SearchRequest):
     searcher = manager.searcher(dataset_id)
+    safe = sanitize_text(request.query)
     return {
         "dataset_id": dataset_id,
-        "query": request.query,
-        "results": searcher.search(request.query, top_k=request.top_k),
+        "query": safe.text,
+        "results": searcher.search(safe.text, top_k=request.top_k),
+        "security": {"sanitized": safe.changed, "categories": safe.categories},
     }
 
 
@@ -210,11 +250,18 @@ def rag_query(dataset_id: str, request: QueryRequest):
         graph_depth=request.graph_depth,
         searcher=searcher,
     )
-    answer = rag.answer(request.question)
+    safe = sanitize_text(request.question)
+    answer = rag.answer(safe.text)
+    safe_answer = sanitize_text(answer)
     return {
         "dataset_id": dataset_id,
-        "question": request.question,
-        "answer": answer,
+        "question": safe.text,
+        "answer": safe_answer.text,
+        "security": {
+            "sanitized": safe.changed or safe_answer.changed,
+            "input_categories": safe.categories,
+            "output_categories": safe_answer.categories,
+        },
     }
 
 
@@ -225,10 +272,11 @@ def canvas(dataset_id: str):
     metadata = manager.read_metadata(dataset_id)
     if metadata.get("status") != "ready":
         raise HTTPException(status_code=409, detail=f"Dataset is not ready: {metadata.get('status')}")
-    if not paths["excel"].exists():
+    source_excel = paths["excel"]
+    if not source_excel.exists():
         raise HTTPException(status_code=404, detail="Dataset Excel file not found")
     try:
-        return {"dataset_id": dataset_id, **build_canvas_graph(paths["excel"])}
+        return {"dataset_id": dataset_id, **build_canvas_graph(source_excel)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Canvas graph generation failed: {exc}") from exc
 
@@ -240,10 +288,11 @@ def forecast(dataset_id: str):
     metadata = manager.read_metadata(dataset_id)
     if metadata.get("status") != "ready":
         raise HTTPException(status_code=409, detail=f"Dataset is not ready: {metadata.get('status')}")
-    if not paths["excel"].exists():
+    source_excel = paths["excel"]
+    if not source_excel.exists():
         raise HTTPException(status_code=404, detail="Dataset Excel file not found")
     try:
-        result = generate_forecast(paths["excel"])
+        result = generate_forecast(source_excel)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Forecast generation failed: {exc}") from exc
     return {"dataset_id": dataset_id, **result}
@@ -253,14 +302,42 @@ def forecast(dataset_id: str):
 def intake(dataset_id: str, request: IntakeRequest):
     searcher = manager.searcher(dataset_id)
     processor = IntakeProcessor(top_k=request.top_k, searcher=searcher)
-    return processor.process(request.text)
+    safe = sanitize_text(request.text)
+    result = processor.process(safe.text)
+    clean_result, output_categories = sanitize_response_payload(result)
+    if isinstance(clean_result, dict):
+        clean_result["security"] = {
+            "sanitized": safe.changed or bool(output_categories),
+            "input_categories": safe.categories,
+            "output_categories": sorted(set(output_categories)),
+        }
+    return clean_result
 
 @app.post("/datasets/{dataset_id}/intake/conversation")
 def intake_conversation(dataset_id: str, request: IntakeConversationRequest):
     searcher = manager.searcher(dataset_id)
     processor = IntakeProcessor(top_k=request.top_k, searcher=searcher)
-    return processor.process_conversation(request.history, request.message)
-
+    safe_history = []
+    history_changed = False
+    history_categories = []
+    for item in request.history:
+        safe_item = {}
+        for key, value in item.items():
+            safe = sanitize_text(value)
+            safe_item[key] = safe.text
+            history_changed = history_changed or safe.changed
+            history_categories.extend(safe.categories)
+        safe_history.append(safe_item)
+    safe_message = sanitize_text(request.message)
+    result = processor.process_conversation(safe_history, safe_message.text)
+    clean_result, output_categories = sanitize_response_payload(result)
+    if isinstance(clean_result, dict):
+        clean_result["security"] = {
+            "sanitized": history_changed or safe_message.changed or bool(output_categories),
+            "input_categories": sorted(set(history_categories + safe_message.categories)),
+            "output_categories": sorted(set(output_categories)),
+        }
+    return clean_result
 
 class SADTextRequest(BaseModel):
     text: str = Field(min_length=60, max_length=70000)
