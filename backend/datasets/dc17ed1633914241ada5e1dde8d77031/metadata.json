@@ -1,0 +1,24 @@
+{
+  "dataset_id": "dc17ed1633914241ada5e1dde8d77031",
+  "filename": "Foreman_Synthetic_Dataset.xlsx",
+  "status": "ready",
+  "created_at": "2026-09-15T21:59:43.972029+00:00",
+  "updated_at": "2026-09-15T22:00:08.454019+00:00",
+  "collection_name": "foreman_dc17ed1633914241ada5e1dde8d77031",
+  "error": null,
+  "document_count": 308,
+  "graph": {
+    "nodes": 172,
+    "edges": 25,
+    "cycles": [
+      [
+        "T-188",
+        "T-183",
+        "T-110"
+      ]
+    ],
+    "missing_ticket_nodes": [
+      "T-9999"
+    ]
+  }
+}
