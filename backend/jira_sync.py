@@ -976,279 +976,52 @@ def process_issue(
 # ============================================================
 
 
-def run_sync(
-    job_id: str,
-    issues: List[
-        Dict[str, Any]
-    ],
-) -> None:
-
+def run_sync(job_id: str, issues: List[Dict[str, Any]]) -> None:
+    """Create submitted drafts in hierarchy order, never orphan a failed child."""
     try:
-
         validate_configuration()
-
-        # ====================================================
-        # Divide issues
-        # ====================================================
-
-        epics = []
-        stories = []
-        tasks = []
-        other_issues = []
-
-        for issue in issues:
-
-            issue_type = (
-                get_issue_type(
-                    issue
-                ).lower()
-            )
-
-            if issue_type == "epic":
-
-                epics.append(
-                    issue
-                )
-
-            elif issue_type == "story":
-
-                stories.append(
-                    issue
-                )
-
-            elif issue_type in (
-                "task",
-                "sub-task",
-                "subtask",
-            ):
-
-                tasks.append(
-                    issue
-                )
-
-            else:
-
-                other_issues.append(
-                    issue
-                )
-
-        # ====================================================
-        # Maps used to resolve Epic links
-        # ====================================================
-
-        epic_by_node_id: Dict[
-            str,
-            str,
-        ] = {}
-
-        epic_by_summary: Dict[
-            str,
-            str,
-        ] = {}
-
-        # Maps used to resolve Story -> Sub-task parent
-        story_by_node_id: Dict[
-            str,
-            str,
-        ] = {}
-
-        story_by_summary: Dict[
-            str,
-            str,
-        ] = {}
-
-        # ====================================================
-        # 1. Create Epics
-        # ====================================================
-
-        for epic in epics:
-
-            jira_key = (
-                process_issue(
-                    job_id,
-                    epic,
-                )
-            )
-
-            if not jira_key:
+        rank = {"epic": 0, "feature": 1, "story": 2, "task": 2, "sub-task": 3, "subtask": 3}
+        ordered = sorted(issues, key=lambda item: rank.get(get_issue_type(item).lower(), 4))
+        submitted = {get_node_id(item): item for item in ordered if get_node_id(item)}
+        created: Dict[str, str] = {}
+        failed: set = set()
+        for issue in ordered:
+            node_id = get_node_id(issue)
+            issue_type = get_issue_type(issue).lower()
+            parent_id = str(issue.get("parentNodeId") or "").strip()
+            epic_id = str(issue.get("epicNodeId") or "").strip()
+            if parent_id and parent_id in submitted and parent_id not in created:
+                publish(job_id, {"status": "failed", "nodeId": node_id,
+                                 "error": "Parent was not created; child was not submitted to Jira."})
+                failed.add(node_id)
                 continue
-
-            node_id = (
-                get_node_id(
-                    epic
-                )
-            )
-
-            summary = str(
-                epic.get(
-                    "summary",
-                    "",
-                )
-            ).strip()
-
-            if node_id:
-
-                epic_by_node_id[
-                    node_id
-                ] = jira_key
-
-            if summary:
-
-                epic_by_summary[
-                    summary
-                ] = jira_key
-
-        # ====================================================
-        # 2. Create Stories
-        #
-        # Story receives Epic Link customfield_10000.
-        # Store created Story Jira keys so Sub-tasks can use
-        # the Story as their Jira parent.
-        # ====================================================
-
-        for story in stories:
-
-            epic_key = (
-                resolve_epic_key(
-                    story,
-                    epic_by_node_id,
-                    epic_by_summary,
-                )
-            )
-
-            jira_key = process_issue(
-                job_id,
-                story,
-                epic_key,
-            )
-
-            if not jira_key:
+            if epic_id and epic_id in submitted and epic_id not in created:
+                publish(job_id, {"status": "failed", "nodeId": node_id,
+                                 "error": "Epic was not created; child was not submitted to Jira."})
+                failed.add(node_id)
                 continue
-
-            node_id = (
-                get_node_id(
-                    story
-                )
-            )
-
-            summary = str(
-                story.get(
-                    "summary",
-                    "",
-                )
-            ).strip()
-
-            if node_id:
-                story_by_node_id[
-                    node_id
-                ] = jira_key
-
-            if summary:
-                story_by_summary[
-                    summary
-                ] = jira_key
-
-        # ====================================================
-        # 3. Create Tasks / Sub-tasks
-        #
-        # If the item belongs to a Story, create it as a real
-        # Jira Sub-task and set the Story Jira key as parent.
-        # A standalone Task remains a normal Jira Task.
-        # ====================================================
-
-        for task in tasks:
-
-            parent_key = (
-                resolve_story_key(
-                    task,
-                    story_by_node_id,
-                    story_by_summary,
-                )
-            )
-
-            task_to_create = task
-
-            # The current React flow may still send embedded
-            # Story tasks as issue_type=Task. If they resolve
-            # to a Story parent, create them as Jira Sub-tasks.
-            if (
-                parent_key
-                and get_issue_type(task).lower()
-                == "task"
-            ):
-                task_to_create = dict(task)
-                task_to_create[
-                    "issue_type"
-                ] = "Sub-task"
-
-            process_issue(
-                job_id,
-                task_to_create,
-                parent_key=parent_key,
-            )
-
-        # ====================================================
-        # 4. Bugs / Improvements / Other issue types
-        # ====================================================
-
-        for issue in other_issues:
-
-            epic_key = (
-                resolve_epic_key(
-                    issue,
-                    epic_by_node_id,
-                    epic_by_summary,
-                )
-            )
-
-            process_issue(
-                job_id,
-                issue,
-                epic_key,
-            )
-
-        # ====================================================
-        # Complete
-        # ====================================================
-
-        publish(
-            job_id,
-            {
-                "status":
-                    "completed",
-
-                "message":
-                    "Jira synchronization completed",
-            },
-        )
-
-        finish_job(
-            job_id,
-            "completed",
-        )
-
+            epic_key = created.get(epic_id) if epic_id else issue.get("epic_link")
+            parent_key = created.get(parent_id) if parent_id else None
+            if issue_type in ("sub-task", "subtask") and not parent_key:
+                # Existing Jira parents can be supplied explicitly; never use dataset IDs as keys.
+                parent_key = issue.get("parentJiraKey")
+                if not parent_key:
+                    publish(job_id, {"status": "failed", "nodeId": node_id,
+                                     "error": "Sub-task requires a created Jira parent."})
+                    failed.add(node_id)
+                    continue
+            key = process_issue(job_id, issue, epic_key=epic_key,
+                                parent_key=parent_key if issue_type in ("sub-task", "subtask") else None)
+            if key and node_id:
+                created[node_id] = key
+            elif node_id:
+                failed.add(node_id)
+        publish(job_id, {"status": "completed", "created": len(created),
+                         "failed": len(failed), "total": len(ordered)})
+        finish_job(job_id, "completed")
     except Exception as exc:
-
-        print(
-            "Jira synchronization "
-            f"failed: {exc}"
-        )
-
-        publish(
-            job_id,
-            {
-                "status":
-                    "job_failed",
-
-                "error":
-                    str(exc),
-            },
-        )
-
-        finish_job(
-            job_id,
-            "failed",
-        )
+        publish(job_id, {"status": "job_failed", "error": str(exc)})
+        finish_job(job_id, "failed")
 
 
 # ============================================================
