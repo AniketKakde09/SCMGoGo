@@ -1954,47 +1954,64 @@ function FlowCanvas() {
     }
   }, [datasetId, canvasGraph, nodeHandlers, forecast]);
 
-  // Conversational Intake creates a local Story node only. Existing dataset
-  // nodes are never replaced or scoped away.
+  // Every intake turn — whether it's just a question or a Story creation —
+  // now scopes the canvas down to the S-AD(s)/Epic(s)/Issue(s) the backend
+  // found relevant (`canvas_focus`). A freshly drafted Story is folded into
+  // the full dataset graph too (so it's still there after "← Full canvas"),
+  // but only the focused subgraph is what actually gets rendered. When the
+  // backend found nothing to focus on (a generic message), we fall back to
+  // showing the full canvas again.
   const handleIntakeResult = useCallback((data) => {
     const story = data?.story;
-    if (data?.status !== "story_ready" || !story?.id) return;
 
-    setCanvasGraph((currentGraph) => {
-      if (!currentGraph) return currentGraph;
-      if ((currentGraph.issues || []).some((item) => item.id === story.id)) return currentGraph;
+    setFullCanvasGraph((currentFull) => {
+      if (!currentFull) return currentFull;
 
-      const nextGraph = {
-        ...currentGraph,
-        issues: [...(currentGraph.issues || []), story],
-        hierarchy_edges: [
-          ...(currentGraph.hierarchy_edges || []),
-          {
-            id: `hierarchy-${story.parent_id}-${story.id}`,
-            source: story.parent_id,
-            target: story.id,
-            kind: "hierarchy",
-            relation: "contains",
-          },
-        ],
-      };
+      let nextFull = currentFull;
+      const isNewStory = data?.status === "story_ready" && story?.id &&
+        !(currentFull.issues || []).some((item) => item.id === story.id);
 
-      // Persist generated Stories for this browser session so a refresh or
-      // forecast reload keeps the canvas addition visible without writing to Jira.
-      const key = `foremanNewStories:${datasetId}`;
-      const existing = JSON.parse(localStorage.getItem(key) || "[]");
-      if (!existing.some((item) => item.id === story.id)) {
-        localStorage.setItem(key, JSON.stringify([...existing, story]));
+      if (isNewStory) {
+        nextFull = {
+          ...currentFull,
+          issues: [...(currentFull.issues || []), story],
+          hierarchy_edges: [
+            ...(currentFull.hierarchy_edges || []),
+            {
+              id: `hierarchy-${story.parent_id}-${story.id}`,
+              source: story.parent_id,
+              target: story.id,
+              kind: "hierarchy",
+              relation: "contains",
+            },
+          ],
+        };
+
+        // Persist generated Stories for this browser session so a refresh or
+        // forecast reload keeps the canvas addition visible without writing to Jira.
+        const key = `foremanNewStories:${datasetId}`;
+        const existing = JSON.parse(localStorage.getItem(key) || "[]");
+        if (!existing.some((item) => item.id === story.id)) {
+          localStorage.setItem(key, JSON.stringify([...existing, story]));
+        }
       }
 
-      const diagram = buildDiagram(nextGraph, nodeHandlers);
+      // canvas_focus is already scoped to just the matched S-AD(s)/Epic(s)/
+      // Issue(s) (plus the new Story, if any) in the same shape as the full
+      // canvas graph. null means nothing was grounded this turn — show the
+      // full canvas (with the Story folded in, if one was just added).
+      const nextVisible = data?.canvas_focus || nextFull;
+
+      setCanvasGraph(nextVisible);
+      setIsFocused(Boolean(data?.canvas_focus));
+
+      const diagram = buildDiagram(nextVisible, nodeHandlers);
       setNodes(diagram.nodes);
       setEdges(diagram.edges);
-      setFullCanvasGraph(nextGraph);
-      setIsFocused(false);
 
       setTimeout(() => fitView({ padding: 0.12, duration: 500 }), 80);
-      return nextGraph;
+
+      return nextFull;
     });
   }, [datasetId, nodeHandlers, fitView, setNodes, setEdges]);
 
