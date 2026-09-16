@@ -2391,6 +2391,14 @@ html,
   box-shadow: 0 8px 24px rgba(245, 158, 11, 0.16);
 }
 
+/* Nodes that an intake query actually matched, vs. context nodes pulled
+   in just to complete the S-AD -> Epic -> Issue path to root. */
+.canvas-architecture-card.is-intake-matched,
+.canvas-issue-card.is-intake-matched {
+  border-color: #2563EB;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25), 0 8px 24px rgba(37, 99, 235, 0.15);
+}
+
 .issue-quality-flags {
   display: flex;
   align-items: center;
@@ -2492,6 +2500,104 @@ html,
 }
 .smart-panel-content > .smart-panel-footer {
   margin: 0 -22px -34px;
+}
+
+
+/* Conversational Intake */
+.intake-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  max-height: 330px;
+  overflow-y: auto;
+}
+
+.intake-chat-empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  background: #F8FAFC;
+}
+
+.intake-message {
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.intake-message-user {
+  align-self: flex-end;
+  max-width: 88%;
+  background: #EFF6FF;
+  color: #1E3A8A;
+  border: 1px solid #BFDBFE;
+}
+
+.intake-message-assistant {
+  align-self: flex-start;
+  max-width: 94%;
+  background: #F8FAFC;
+  color: #334155;
+  border: 1px solid #E2E8F0;
+}
+
+.intake-message-role {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: 3px;
+  color: var(--text-muted);
+}
+
+.intake-questions {
+  border-left: 3px solid var(--primary-accent);
+  padding: 8px 10px;
+  background: #F8FAFC;
+  border-radius: 0 8px 8px 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.intake-story-preview {
+  margin-top: 14px;
+  border: 1px solid #BFDBFE;
+  border-radius: 10px;
+  padding: 12px;
+  background: #F8FBFF;
+}
+
+.intake-story-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.intake-story-meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.intake-story-description {
+  margin-top: 9px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.intake-story-criteria {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
 }
 
 /* =========================================================

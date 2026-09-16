@@ -31,7 +31,7 @@ import {
   getCanvasGraph,
   searchDataset,
   askRag,
-  runIntake,
+  runIntakeConversation,
 } from "../services/api";
 
 // =========================================================
@@ -667,7 +667,10 @@ function SadNode({ data }) {
 function CanvasEpicNode({ data }) {
   const { epic, issueCount, onOpen } = data;
   return (
-    <div className="canvas-architecture-card epic-canvas-card" onDoubleClick={() => onOpen?.(epic)}>
+    <div
+      className={`canvas-architecture-card epic-canvas-card ${epic.matched ? "is-intake-matched" : ""}`}
+      onDoubleClick={() => onOpen?.(epic)}
+    >
       <Handle type="target" position={Position.Left} className="handle handle-left nodrag" />
       <Handle type="source" position={Position.Right} className="handle handle-right nodrag" />
       <div className="canvas-card-header">
@@ -777,7 +780,7 @@ function IssueNode({ data }) {
 
   return (
     <div
-      className={`canvas-issue-card issue-${String(issue.type || issue.issue_type || "issue").toLowerCase()} ${qualityFlags.length ? "has-quality-flags" : ""}`}
+      className={`canvas-issue-card issue-${String(issue.type || issue.issue_type || "issue").toLowerCase()} ${qualityFlags.length ? "has-quality-flags" : ""} ${issue.matched ? "is-intake-matched" : ""}`}
       onDoubleClick={() => onOpen?.(issue)}
       title={qualityFlags.length ? qualityFlags.map((flag) => flag.title).join(" · ") : undefined}
     >
@@ -942,6 +945,35 @@ function getIssueSprintId(issue) {
   return String(issue?.sprint_id ?? issue?.sprintId ?? issue?.sprint ?? "").trim();
 }
 
+
+function applyNewStories(graph, datasetId) {
+  if (!graph || !datasetId) return graph;
+  try {
+    const stories = JSON.parse(localStorage.getItem(`foremanNewStories:${datasetId}`) || "[]");
+    if (!Array.isArray(stories) || !stories.length) return graph;
+    const existingIds = new Set((graph.issues || []).map((item) => item.id));
+    const additions = stories.filter((story) => story?.id && !existingIds.has(story.id));
+    if (!additions.length) return graph;
+    const validParents = new Set((graph.epics || []).map((epic) => epic.id));
+    const validAdditions = additions.filter((story) => validParents.has(story.parent_id));
+    return {
+      ...graph,
+      issues: [...(graph.issues || []), ...validAdditions],
+      hierarchy_edges: [
+        ...(graph.hierarchy_edges || []),
+        ...validAdditions.map((story) => ({
+          id: `hierarchy-${story.parent_id}-${story.id}`,
+          source: story.parent_id,
+          target: story.id,
+          kind: "hierarchy",
+          relation: "contains",
+        })),
+      ],
+    };
+  } catch {
+    return graph;
+  }
+}
 
 function applyCanvasOverrides(graph, datasetId) {
   if (!graph || !datasetId) return graph;
@@ -1753,24 +1785,31 @@ function SearchPanel({ datasetId, onClose }) {
 // Intake Triage Panel
 // =========================================================
 
-function IntakePanel({ datasetId, onClose }) {
+function IntakePanel({ datasetId, onClose, onResult }) {
   const [text, setText] = useState("");
-  const [report, setReport] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [lastResult, setLastResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || loading) return;
 
     setLoading(true);
     setError("");
-    setReport(null);
+    const history = messages.map(({ role, content }) => ({ role, content }));
+    setMessages((current) => [...current, { role: "user", content: trimmed }]);
+    setText("");
 
     try {
-      const data = await runIntake(datasetId, trimmed);
-      setReport(data);
+      const data = await runIntakeConversation(datasetId, trimmed, history);
+      setLastResult(data);
+      if (data.message) {
+        setMessages((current) => [...current, { role: "assistant", content: data.message }]);
+      }
+      onResult?.(data);
     } catch (err) {
       setError(err.message || "Intake processing failed.");
     } finally {
@@ -1778,142 +1817,80 @@ function IntakePanel({ datasetId, onClose }) {
     }
   };
 
+  const story = lastResult?.story;
+  const isReady = lastResult?.status === "story_ready" && story;
+
   return (
     <aside className="smart-node-panel">
       <div className="smart-panel-header">
         <div className="smart-panel-title-area">
           <div className="smart-panel-icon story">📥</div>
-
           <div>
             <div className="smart-panel-meta">
               <span className="smart-panel-type story">INTAKE</span>
             </div>
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#0F172A" }}>
-              Triage New Work
+              Create Story on Canvas
             </h2>
           </div>
         </div>
-
-        <button className="smart-panel-close" onClick={onClose}>
-          ×
-        </button>
+        <button className="smart-panel-close" onClick={onClose}>×</button>
       </div>
 
       <div className="smart-panel-content">
+        <div className="intake-chat">
+          {messages.length === 0 && (
+            <div className="intake-chat-empty">
+              Describe the new work. I’ll use the existing S-AD, Epic and Issues to
+              ask for clarification when needed, then add the new Story directly to the canvas.
+            </div>
+          )}
+
+          {messages.map((message, index) => (
+            <div key={`${message.role}-${index}`} className={`intake-message intake-message-${message.role}`}>
+              <div className="intake-message-role">{message.role === "user" ? "You" : "Foreman"}</div>
+              <div>{message.content}</div>
+            </div>
+          ))}
+
+          {lastResult?.questions?.length > 0 && lastResult.status === "clarification_needed" && (
+            <div className="intake-questions">
+              {lastResult.questions.map((question, index) => (
+                <div key={index}>• {question}</div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {error && <div className="auth-message" style={{ marginTop: 12 }}>{error}</div>}
+
+        {isReady && (
+          <div className="intake-story-preview">
+            <div className="intake-report-heading">Story added to canvas</div>
+            <div className="intake-story-title">{story.title}</div>
+            <div className="intake-story-meta">
+              {story.sad_section_id} · {story.parent_id}
+              {story.story_points != null ? ` · ${story.story_points} pts` : ""}
+            </div>
+            {story.description && <div className="intake-story-description">{story.description}</div>}
+            {story.acceptance_criteria?.length > 0 && (
+              <ul className="intake-story-criteria">
+                {story.acceptance_criteria.map((criterion, index) => <li key={index}>{criterion}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
+
         <form className="intake-form" onSubmit={handleSubmit}>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder='e.g. "Make it possible for a customer to book a service in under two minutes."'
+            placeholder={messages.length ? "Answer Foreman's question or refine the Story…" : "Describe the new work…"}
           />
           <button type="submit" disabled={loading || !text.trim()}>
-            {loading ? "Analyzing…" : "Analyze Intake"}
+            {loading ? "Thinking…" : messages.length ? "Continue" : "Start Intake"}
           </button>
         </form>
-
-        {error && (
-          <div className="auth-message" style={{ marginTop: 12 }}>
-            {error}
-          </div>
-        )}
-
-        {report && (
-          <>
-            <div className="intake-report-section">
-              <div className="intake-report-heading">Architecture Areas</div>
-
-              {report.architecture_areas?.length > 0 ? (
-                <div className="intake-chip-row">
-                  {report.architecture_areas.map((a) => (
-                    <span key={a.sad_section_id} className="intake-chip">
-                      {a.sad_section_id} — {a.title || a.section_title || a.sad_title}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <div className="smart-empty">No architecture matches.</div>
-              )}
-            </div>
-
-            <div className="intake-report-section">
-              <div className="intake-report-heading">Related Tickets</div>
-
-              {report.related_tickets?.length > 0 ? (
-                report.related_tickets.map((t) => (
-                  <div key={t.ticket_id} className="intake-row">
-                    <span>
-                      <strong>{t.ticket_id}</strong> — {t.title}
-                    </span>
-                    <span className={`status-pill ${statusClass(t.status)}`}>
-                      {t.status || "—"}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <div className="smart-empty">No related tickets found.</div>
-              )}
-            </div>
-
-            <div className="intake-report-section">
-              <div className="intake-report-heading">Dependency Impacts</div>
-
-              {report.dependency_impacts?.length > 0 ? (
-                report.dependency_impacts.map((d, i) => (
-                  <div key={i} className="intake-row">
-                    <span>
-                      <strong>{d.ticket_id}</strong> depends on{" "}
-                      <strong>{d.depends_on}</strong> ({d.dependency_type})
-                    </span>
-                    <span className={`status-pill ${statusClass(d.target_status)}`}>
-                      {d.target_status || "—"}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <div className="smart-empty">No dependency impacts.</div>
-              )}
-            </div>
-
-            {report.dependency_cycles?.length > 0 && (
-              <div className="intake-report-section">
-                <div className="intake-report-heading">Dependency Cycles</div>
-
-                {report.dependency_cycles.map((cycle, i) => (
-                  <div key={i} className="intake-cycle-warning">
-                    {cycle.join(" → ")} → {cycle[0]}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="intake-report-section">
-              <div className="intake-report-heading">LLM Assessment</div>
-
-              {report.llm_assessment ? (
-                <div className="intake-assessment-card">
-                  <span className="intake-assessment-label">
-                    {report.llm_assessment.classification || report.llm_provider}
-                  </span>
-                  <pre
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      fontSize: 11,
-                      margin: 0,
-                      color: "#334155",
-                    }}
-                  >
-                    {JSON.stringify(report.llm_assessment, null, 2)}
-                  </pre>
-                </div>
-              ) : (
-                <div className="smart-empty">
-                  LLM assessment disabled — set LLM_PROVIDER on the backend
-                  to enable interpretation.
-                </div>
-              )}
-            </div>
-          </>
-        )}
       </div>
     </aside>
   );
@@ -1935,6 +1912,8 @@ function FlowCanvas() {
   const [datasetMeta, setDatasetMeta] = useState(null);
   const [forecast, setForecast] = useState(null);
   const [canvasGraph, setCanvasGraph] = useState(null);
+  const [fullCanvasGraph, setFullCanvasGraph] = useState(null);
+  const [isFocused, setIsFocused] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [loadingLabel, setLoadingLabel] = useState("Loading dataset...");
@@ -2014,6 +1993,82 @@ function FlowCanvas() {
     }
   }, [datasetId, canvasGraph, nodeHandlers, forecast]);
 
+  // Every intake turn — whether it's just a question or a Story creation —
+  // now scopes the canvas down to the S-AD(s)/Epic(s)/Issue(s) the backend
+  // found relevant (`canvas_focus`). A freshly drafted Story is folded into
+  // the full dataset graph too (so it's still there after "← Full canvas"),
+  // but only the focused subgraph is what actually gets rendered. When the
+  // backend found nothing to focus on (a generic message), we fall back to
+  // showing the full canvas again.
+  const handleIntakeResult = useCallback((data) => {
+    const story = data?.story;
+
+    setFullCanvasGraph((currentFull) => {
+      if (!currentFull) return currentFull;
+
+      let nextFull = currentFull;
+      const isNewStory = data?.status === "story_ready" && story?.id &&
+        !(currentFull.issues || []).some((item) => item.id === story.id);
+
+      if (isNewStory) {
+        nextFull = {
+          ...currentFull,
+          issues: [...(currentFull.issues || []), story],
+          hierarchy_edges: [
+            ...(currentFull.hierarchy_edges || []),
+            {
+              id: `hierarchy-${story.parent_id}-${story.id}`,
+              source: story.parent_id,
+              target: story.id,
+              kind: "hierarchy",
+              relation: "contains",
+            },
+          ],
+        };
+
+        // Persist generated Stories for this browser session so a refresh or
+        // forecast reload keeps the canvas addition visible without writing to Jira.
+        const key = `foremanNewStories:${datasetId}`;
+        const existing = JSON.parse(localStorage.getItem(key) || "[]");
+        if (!existing.some((item) => item.id === story.id)) {
+          localStorage.setItem(key, JSON.stringify([...existing, story]));
+        }
+      }
+
+      // canvas_focus is already scoped to just the matched S-AD(s)/Epic(s)/
+      // Issue(s) (plus the new Story, if any) in the same shape as the full
+      // canvas graph. null means nothing was grounded this turn — show the
+      // full canvas (with the Story folded in, if one was just added).
+      const nextVisible = data?.canvas_focus || nextFull;
+
+      setCanvasGraph(nextVisible);
+      setIsFocused(Boolean(data?.canvas_focus));
+
+      const diagram = buildDiagram(nextVisible, nodeHandlers);
+      setNodes(diagram.nodes);
+      setEdges(diagram.edges);
+
+      setTimeout(() => fitView({ padding: 0.12, duration: 500 }), 80);
+
+      return nextFull;
+    });
+  }, [datasetId, nodeHandlers, fitView, setNodes, setEdges]);
+
+  const handleBackToFullCanvas = useCallback(() => {
+    if (!fullCanvasGraph) return;
+
+    setCanvasGraph(fullCanvasGraph);
+    setIsFocused(false);
+
+    const diagram = buildDiagram(fullCanvasGraph, nodeHandlers);
+    setNodes(diagram.nodes);
+    setEdges(diagram.edges);
+
+    setTimeout(() => {
+      fitView({ padding: 0.12, duration: 400 });
+    }, 80);
+  }, [fullCanvasGraph, nodeHandlers, fitView, setNodes, setEdges]);
+
   const loadEverything = useCallback(async () => {
     if (!datasetId) return;
 
@@ -2049,8 +2104,10 @@ function FlowCanvas() {
         getCanvasGraph(datasetId),
       ]);
       setForecast(forecastResult);
-      const mergedCanvasResult = applyCanvasOverrides(canvasResult, datasetId);
+      const mergedCanvasResult = applyNewStories(applyCanvasOverrides(canvasResult, datasetId), datasetId);
       setCanvasGraph(mergedCanvasResult);
+      setFullCanvasGraph(mergedCanvasResult);
+      setIsFocused(false);
 
       const diagram = buildDiagram(mergedCanvasResult, nodeHandlers, expandedEpicIds);
       setNodes(diagram.nodes);
@@ -2089,8 +2146,10 @@ function FlowCanvas() {
         getCanvasGraph(datasetId),
       ]);
       setForecast(forecastResult);
-      const mergedCanvasResult = applyCanvasOverrides(canvasResult, datasetId);
+      const mergedCanvasResult = applyNewStories(applyCanvasOverrides(canvasResult, datasetId), datasetId);
       setCanvasGraph(mergedCanvasResult);
+      setFullCanvasGraph(mergedCanvasResult);
+      setIsFocused(false);
 
       const diagram = buildDiagram(mergedCanvasResult, nodeHandlers, expandedEpicIds);
       setNodes(diagram.nodes);
@@ -2325,6 +2384,20 @@ function FlowCanvas() {
             </div>
           )}
 
+          {isFocused && (
+            <div className="dataset-chip" title="Showing only the tickets/architecture matched by your last intake query">
+              <span className="dot" style={{ background: "#2563EB" }} />
+              <strong>Intake results</strong>
+              <button
+                className="btn-outline-action"
+                style={{ marginLeft: 8, padding: "2px 10px" }}
+                onClick={handleBackToFullCanvas}
+              >
+                ← Full canvas
+              </button>
+            </div>
+          )}
+
           {loading && (
             <div
               style={{
@@ -2437,7 +2510,11 @@ function FlowCanvas() {
       )}
 
       {activePanel?.type === "intake" && (
-        <IntakePanel datasetId={datasetId} onClose={() => setActivePanel(null)} />
+        <IntakePanel
+          datasetId={datasetId}
+          onClose={() => setActivePanel(null)}
+          onResult={handleIntakeResult}
+        />
       )}
 
       {jsonOutput && (

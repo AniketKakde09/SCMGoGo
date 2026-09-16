@@ -52,6 +52,11 @@ class IntakeRequest(BaseModel):
     text: str = Field(min_length=1)
     top_k: int = Field(default=8, ge=1, le=30)
 
+class IntakeConversationRequest(BaseModel):
+    message: str = Field(min_length=1)
+    history: list[dict[str, str]] = Field(default_factory=list)
+    top_k: int = Field(default=8, ge=1, le=30)
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
     top_k: int = Field(default=5, ge=1, le=30)
@@ -248,3 +253,9 @@ def intake(dataset_id: str, request: IntakeRequest):
     searcher = manager.searcher(dataset_id)
     processor = IntakeProcessor(top_k=request.top_k, searcher=searcher)
     return processor.process(request.text)
+
+@app.post("/datasets/{dataset_id}/intake/conversation")
+def intake_conversation(dataset_id: str, request: IntakeConversationRequest):
+    searcher = manager.searcher(dataset_id)
+    processor = IntakeProcessor(top_k=request.top_k, searcher=searcher)
+    return processor.process_conversation(request.history, request.message)
