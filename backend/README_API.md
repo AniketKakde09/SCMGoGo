@@ -12,7 +12,8 @@ Client / Frontend
        |
        +--> POST /datasets
        |       |
-       |       +--> datasets/<dataset_id>/dataset.xlsx
+       |       +--> temporary raw upload -> sanitize -> delete raw
+       |       +--> datasets/<dataset_id>/dataset.xlsx (sanitized only)
        |       +--> Sentence Transformers -> ChromaDB
        |       +--> Pandas -> structured workbook access
        |       +--> NetworkX -> dependency graph
@@ -23,7 +24,7 @@ Client / Frontend
        +--> GET  /datasets/{id}
 ```
 
-Every uploaded dataset has its own Chroma collection and dependency graph, so multiple datasets can coexist.
+Every uploaded dataset has its own Chroma collection and dependency graph, so multiple datasets can coexist. Uploaded workbooks are sanitized at the upload boundary; only the sanitized `dataset.xlsx` is retained.
 
 ## Run
 

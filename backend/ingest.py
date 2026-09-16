@@ -16,6 +16,7 @@ import pandas as pd
 
 from graph import GRAPH_PATH, build_dependency_graph, save_graph, graph_diagnostics
 from search import get_embedding_model
+from security import sanitize_dataframe
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -33,6 +34,20 @@ EMBEDDING_MODEL = os.getenv(
 # Keep the AnswerKey out of the searchable knowledge base by default.
 INCLUDE_ANSWER_KEY = os.getenv("INCLUDE_ANSWER_KEY", "false").lower() == "true"
 
+
+
+
+def sanitize_workbook(source_path: Path | str, destination_path: Path | str) -> dict[str, Any]:
+    """Create a sanitized workbook without changing the original upload."""
+    source_path = Path(source_path)
+    destination_path = Path(destination_path)
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    sheets = pd.read_excel(source_path, sheet_name=None)
+    sanitized = {name: sanitize_dataframe(df) for name, df in sheets.items()}
+    with pd.ExcelWriter(destination_path, engine="openpyxl") as writer:
+        for name, df in sanitized.items():
+            df.to_excel(writer, sheet_name=str(name)[:31], index=False)
+    return {"source": str(source_path), "destination": str(destination_path), "sheets": list(sanitized)}
 
 
 def clean(value: Any) -> str:
