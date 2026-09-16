@@ -68,7 +68,7 @@ class LLMClient:
         raise RuntimeError(f"Unsupported LLM provider: {self.provider}")
 
     def _generate_groq(self, system_prompt, user_prompt, model, temperature, max_tokens) -> str:
-        model = model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        model = model or os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
         response = self.client.chat.completions.create(
             model=model,
             messages=[
@@ -78,7 +78,14 @@ class LLMClient:
             temperature=temperature,
             max_completion_tokens=max_tokens,
         )
-        return response.choices[0].message.content or ""
+
+        choice = response.choices[0]
+        if choice.finish_reason == "length":
+            raise ValueError(
+                "Groq stopped generation because the output token limit was reached. "
+                "Reduce the requested ticket count or generate tickets in smaller batches."
+                )
+        return choice.message.content or ""
 
     def _generate_bedrock(self, system_prompt, user_prompt, model, temperature, max_tokens) -> str:
         model = model or os.getenv("BEDROCK_MODEL", "amazon.nova-micro-v1:0")
@@ -100,6 +107,10 @@ class LLMClient:
         temperature: float = 0.0,
         max_tokens: int = 2000,
     ) -> dict[str, Any]:
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         raw = self.generate(
             system_prompt,
             user_prompt,
@@ -108,17 +119,45 @@ class LLMClient:
             max_tokens=max_tokens,
         ).strip()
 
+        logger.info(
+            "LLM JSON response: provider=%s, length=%d, empty=%s",
+            self.provider,
+            len(raw),
+            not bool(raw),
+        )
+
+        if not raw:
+            raise ValueError("LLM returned an empty response.")
+
+        # Remove a complete Markdown code fence, if present.
         if raw.startswith("```"):
-            raw = raw.strip("`")
-            if raw.startswith("json"):
-                raw = raw[4:].lstrip()
+            lines = raw.splitlines()
+
+            if len(lines) >= 3 and lines[-1].strip() == "```":
+                raw = "\n".join(lines[1:-1]).strip()
 
         try:
             parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "LLM returned invalid JSON: line=%d, column=%d, length=%d",
+                exc.lineno,
+                exc.colno,
+                len(raw),
+            )
+            raise ValueError(
+                "LLM returned invalid JSON. The response may be truncated "
+                "or may not follow the requested format."
+            ) from exc
 
-        # Keep the raw model output available rather than silently losing it.
-        return {"raw_response": raw}
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                f"LLM returned {type(parsed).__name__}; expected a JSON object."
+            )
+
+        logger.info(
+            "LLM JSON parsed successfully. Keys: %s",
+            list(parsed.keys()),
+        )
+
+        return parsed

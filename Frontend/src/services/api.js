@@ -201,3 +201,37 @@ export function getCanvasGraph(datasetId) {
 }
 
 export { API_BASE_URL };
+
+// ---------------------------------------------------------
+// Jira publishing (human-approved Playground drafts)
+// ---------------------------------------------------------
+
+export function getJiraHealth() {
+  return request("/api/jira/health");
+}
+
+export function startJiraSync(issues) {
+  return request("/api/jira/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ issues }),
+  });
+}
+
+export function watchJiraSync(jobId, { onEvent, onError } = {}) {
+  const source = new EventSource(`${API_BASE_URL}/api/jira/sync/${jobId}/events`);
+  source.onmessage = (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      onEvent?.(payload);
+      if (["completed", "job_failed"].includes(payload.status)) source.close();
+    } catch (error) {
+      onError?.(error);
+    }
+  };
+  source.onerror = (error) => {
+    source.close();
+    onError?.(error);
+  };
+  return () => source.close();
+}

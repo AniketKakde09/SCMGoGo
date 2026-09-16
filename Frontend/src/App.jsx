@@ -4,6 +4,7 @@ import SignIn from "./pages/SignIn";
 import Start from "./pages/Start";
 import UploadDataset from "./pages/UploadDataset";
 import Canvas from "./pages/Canvas";
+import PlanningPlayground from "./pages/PlanningPlayground";
 import ForecastReportRoute from "./pages/ForecastReportRoute";
 
 function App() {
@@ -34,6 +35,11 @@ function App() {
         <Route
           path="/canvas"
           element={<Canvas />}
+        />
+
+        <Route
+          path="/playground"
+          element={<PlanningPlayground />}
         />
 
         <Route

@@ -106,6 +106,19 @@ function Start() {
           <button
             type="button"
             className="start-option"
+            onClick={() => navigate("/playground")}
+          >
+            <span className="start-option-icon">✦</span>
+            <span className="start-option-text">
+              <strong>Open Planning Playground</strong>
+              <small>Start from a blank canvas, map Epic → Feature → Story with arrows, check duplicates, and create approved work in Jira.</small>
+            </span>
+            <span className="start-option-arrow">→</span>
+          </button>
+
+          <button
+            type="button"
+            className="start-option"
             onClick={() => setShowIdField((current) => !current)}
           >
             <span className="start-option-icon">🔑</span>

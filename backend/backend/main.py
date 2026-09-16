@@ -21,6 +21,7 @@ from forecast import generate_forecast
 from canvas import build_canvas_graph
 from jira_sync import router as jira_router
 from security import sanitize_response_payload, sanitize_text, security_status
+from sad_workflow import extract_document, generate_proposal, MAX_BYTES
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATASETS_DIR = Path(os.getenv("FOREMAN_DATASETS_DIR", str(BASE_DIR / "datasets")))
@@ -337,3 +338,25 @@ def intake_conversation(dataset_id: str, request: IntakeConversationRequest):
             "output_categories": sorted(set(output_categories)),
         }
     return clean_result
+
+class SADTextRequest(BaseModel):
+    text: str = Field(min_length=60, max_length=70000)
+    title: str = Field(default="System Architecture Document", max_length=200)
+
+
+@app.post("/datasets/{dataset_id}/sad/generate")
+def generate_sad_text(dataset_id: str, request: SADTextRequest):
+    metadata = manager.read_metadata(dataset_id)
+    if metadata.get("status") != "ready":
+        raise HTTPException(409, "Dataset must be ready before duplicate review")
+    return generate_proposal(request.text, manager.paths(dataset_id)["excel"], request.title)
+
+
+@app.post("/datasets/{dataset_id}/sad/upload")
+async def generate_sad_upload(dataset_id: str, file: UploadFile = File(...)):
+    metadata = manager.read_metadata(dataset_id)
+    if metadata.get("status") != "ready":
+        raise HTTPException(409, "Dataset must be ready before duplicate review")
+    data = await file.read(MAX_BYTES + 1)
+    text = extract_document(file.filename or "", data)
+    return generate_proposal(text, manager.paths(dataset_id)["excel"], file.filename or "SAD")
