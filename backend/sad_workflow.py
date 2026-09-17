@@ -82,6 +82,7 @@ def _candidate(proposal, backlog):
     if not title or not description:
         return []
     title_tokens = _tokens(title)
+    normalized_title = re.sub(r'[^a-z0-9]+', ' ', title.casefold()).strip()
     description_tokens = _tokens(description)
     if len(title_tokens) < 2 or len(description_tokens) < 3:
         return []
@@ -100,9 +101,12 @@ def _candidate(proposal, backlog):
         title_overlap = len(title_tokens & other_title_tokens) / max(1, len(title_tokens | other_title_tokens))
         body_overlap = len(description_tokens & other_description_tokens) / max(1, len(description_tokens | other_description_tokens))
         title_similarity = SequenceMatcher(None, title.casefold(), existing_title.casefold()).ratio()
-        # Require both highly similar intent/title AND substantially overlapping scope.
-        if (title_overlap >= .85 or title_similarity >= .94) and body_overlap >= .65:
-            score = round(min(title_overlap, title_similarity) * .5 + body_overlap * .5, 3)
+        normalized_existing = re.sub(r'[^a-z0-9]+', ' ', existing_title.casefold()).strip()
+        exact_title = normalized_title == normalized_existing
+        # Exact titles are strong evidence; near-identical titles also need
+        # substantial scope overlap. Related architecture vocabulary alone is not enough.
+        if (exact_title and body_overlap >= .35) or (title_similarity >= .91 and body_overlap >= .60) or (title_overlap >= .86 and body_overlap >= .78):
+            score = round(max(title_similarity, title_overlap) * .55 + body_overlap * .45, 3)
             found.append({'ticket_id': str(row.get('TicketID', '')).strip(),
                           'title': existing_title, 'type': str(row.get('Type', '')),
                           'status': str(row.get('Status', '')), 'score': score,

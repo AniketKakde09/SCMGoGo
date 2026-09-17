@@ -6,7 +6,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./PlanningPlayground.css";
-import { getCanvasGraph, runIntake, startJiraSync, watchJiraSync } from "../services/api";
+import { getCanvasGraph, runIntake, startJiraSync, watchJiraSync, exportPlanningExcel } from "../services/api";
 
 const TYPES = ["Epic", "Feature", "Story", "Task", "Sub-task", "Note"];
 const TYPE_CLASS = { Epic: "epic", Feature: "feature", Story: "story", Task: "task", "Sub-task": "task", Note: "note" };
@@ -81,6 +81,9 @@ function PlaygroundInner() {
   const { fitView } = useReactFlow();
   const [typeFilter, setTypeFilter] = useState("All");
   const [searchText, setSearchText] = useState("");
+  const [focusMode, setFocusMode] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [showComposer, setShowComposer] = useState(false);
   const location = useLocation();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -433,20 +436,70 @@ function PlaygroundInner() {
   }, [nodes, typeFilter, searchText]);
   const displayedNodes = useMemo(() => nodes.filter(n => visibleIds.has(n.id)).map(n => ({...n, data: {...n.data, childCount: nodes.filter(child => child.data.parentId === n.id).length}})), [nodes, visibleIds]);
   const displayedEdges = useMemo(() => edges.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target)), [edges, visibleIds]);
+  const exportExcel = async () => {
+    if (!nodes.length || exportBusy) return;
+    setExportBusy(true);
+    try {
+      const byId = new Map(nodes.map(node => [node.id, node]));
+      const lineage = (node) => {
+        const ancestors = [];
+        const seen = new Set([node.id]);
+        let current = node;
+        while (current?.data.parentId && !seen.has(current.data.parentId)) {
+          seen.add(current.data.parentId);
+          current = byId.get(current.data.parentId);
+          if (!current) break;
+          ancestors.push(current);
+        }
+        return ancestors;
+      };
+      const tickets = nodes.filter(node => node.data.type !== "Note").map(node => {
+        const d = node.data;
+        const ancestors = lineage(node);
+        const epic = (d.type === "Epic" ? node : ancestors.find(item => item.data.type === "Epic"));
+        const feature = (d.type === "Feature" ? node : ancestors.find(item => item.data.type === "Feature"));
+        const parent = byId.get(d.parentId);
+        return {
+          "Local ID": node.id, "Issue Type": d.type, "Summary": d.title || "",
+          "Parent ID": d.parentId || "", "Parent Type": parent?.data.type || (d.parentId ? PARENT_TYPE[d.type] || "" : ""),
+          "Parent Title": parent?.data.title || d.parentTitle || "",
+          "Epic": epic?.data.title || "", "Feature": feature?.data.title || "",
+          "Description": d.description || "", "Acceptance Criteria": d.acceptanceCriteria || "",
+          "Story Points": d.points || "", "Priority": d.priority || "", "Sprint": d.sprint || "",
+          "SAD Section": d.sourceSectionId || "", "Source Excerpt": d.sourceExcerpt || "",
+          "Assumptions": (d.assumptions || []).join("; "),
+          "Duplicate Review": needsDuplicateReview(d) ? "Needs review" : highConfidenceCandidates(d).length ? "Reviewed" : "No high-confidence match",
+          "Duplicate Candidates": highConfidenceCandidates(d).map(c => `${c.ticket_id}: ${c.title}`).join("; "),
+          "Jira Key": d.jiraKey || "", "Publish Status": d.publishStatus || (d.jiraKey ? "Created" : "Draft"),
+          "Dependencies": edges.filter(edge => edge.target === node.id && edge.data?.kind === "dependency")
+            .map(edge => `${edge.data?.relation || "Relates"}: ${byId.get(edge.source)?.data.title || edge.source}`).join("; "),
+        };
+      });
+      if (!tickets.length) { setNotice("No tickets to export."); return; }
+      const blob = await exportPlanningExcel(tickets);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = "foreman-planning-backlog.xlsx";
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setNotice(`Exported ${tickets.length} tickets to Excel. Nothing was created in Jira.`);
+    } catch (error) { setNotice(error.message || "Excel export failed."); }
+    finally { setExportBusy(false); }
+  };
   const arrange = () => { setNodes(current => layoutHierarchy(current)); window.setTimeout(() => fitView({padding: 0.12, duration: 450}), 50); };
   const duplicate = selectedNode?.data?.duplicate?.confidence === "high" || (selectedNode?.data?.analysis && selectedNode?.data?.duplicate?.distance != null && asDistance(selectedNode.data.duplicate.distance) <= DUPLICATE_HIGH) ? selectedNode?.data?.duplicate : null;
   const distance = asDistance(duplicate?.distance);
   const duplicateLevel = distance !== null && distance <= DUPLICATE_HIGH ? "High overlap" : "Possible overlap";
   const readinessMissing = selectedNode ? missingFor(selectedNode.data) : [];
 
-  return <div className="pg-shell">
-    <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button className="pg-bulk-create" disabled={publishBusy || !nodes.some((n)=>n.data.type!=="Note" && !n.data.jiraKey)} onClick={publishAll}>{publishBusy ? "Creating tickets…" : `Create all tickets (${nodes.filter((n)=>n.data.type!=="Note" && !n.data.jiraKey).length})`}</button><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
+  return <div className={`pg-shell ${focusMode ? "pg-focus-mode" : ""}`}>
+    <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button type="button" onClick={() => setFocusMode(value => !value)} title="Toggle distraction-free planning">{focusMode ? "Exit focus" : "Focus mode"}</button><button type="button" onClick={exportExcel} disabled={exportBusy || !nodes.length}>{exportBusy ? "Exporting…" : "↓ Export Excel"}</button><button className="pg-bulk-create" disabled={publishBusy || !nodes.some((n)=>n.data.type!=="Note" && !n.data.jiraKey)} onClick={publishAll}>{publishBusy ? "Creating tickets…" : `Create all tickets (${nodes.filter((n)=>n.data.type!=="Note" && !n.data.jiraKey).length})`}</button><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
     <div className="pg-studio-controls"><div className="pg-filters">{["All", "Epic", "Feature", "Story", "Task", "Duplicates"].map(type => <button key={type} className={typeFilter === type ? "active" : ""} onClick={() => setTypeFilter(type)}>{type === "All" ? "All" : type === "Duplicates" ? "Needs duplicate review" : `${type}s`} <b>{type === "All" ? nodes.length : type === "Duplicates" ? nodes.filter(n => needsDuplicateReview(n.data)).length : counts[type]}</b></button>)}</div><div className="pg-view-actions"><input aria-label="Search work items" placeholder="Search work items…" value={searchText} onChange={e => setSearchText(e.target.value)}/><button onClick={arrange}>Organize layout</button><button onClick={() => fitView({padding: 0.12, duration: 400})}>Fit view</button><span>Hierarchy view</span></div></div>
-    <div className="pg-toolbar"><select value={newType} onChange={(e)=>setNewType(e.target.value)}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select><input value={title} onChange={(e)=>setTitle(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addNode()} placeholder="Describe a work item…"/><button className="primary" onClick={addNode}>+ Add to canvas</button><span className="pg-link-label">Arrow:</span><select value={relationMode} onChange={(e)=>setRelationMode(e.target.value)} title="Auto maps valid Epic → Feature → Story/Task arrows as hierarchy"><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select><span className="pg-tip">Draw arrows to map hierarchy or dependencies · Draft → Analyze → Review → Create</span></div>
+    <div className="pg-toolbar"><button type="button" onClick={() => setShowComposer(value => !value)} aria-expanded={showComposer}>{showComposer ? "− Hide quick add" : "+ Add work item"}</button><div className={`pg-compose-fields ${showComposer ? "is-open" : ""}`}><select value={newType} onChange={(e)=>setNewType(e.target.value)}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select><input value={title} onChange={(e)=>setTitle(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addNode()} placeholder="Describe a work item…"/><button className="primary" onClick={addNode}>+ Add to canvas</button></div><span className="pg-link-label">Arrow:</span><select value={relationMode} onChange={(e)=>setRelationMode(e.target.value)} title="Auto maps valid Epic → Feature → Story/Task arrows as hierarchy"><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select><span className="pg-tip">Draw arrows to map hierarchy or dependencies · Draft → Analyze → Review → Create</span></div>
     {bulkProgress && <div className="pg-bulk-progress" role="status"><strong>Jira creation · {bulkProgress.completed}/{bulkProgress.total}</strong><span>✓ {bulkProgress.created} created · ✕ {bulkProgress.failed} failed</span><progress value={bulkProgress.completed} max={bulkProgress.total} />{bulkProgress.jobId && <small>Job {bulkProgress.jobId}</small>}</div>}
     {notice && <div className="pg-notice">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
     <main className="pg-main"><section className="pg-canvas">{nodes.length===0&&<div className="pg-empty"><div className="pg-empty-icon">✦</div><h2>Your planning space is empty</h2><p>Add work, arrange it visually, then let Foreman compare drafts with the existing backlog before publishing.</p><div className="pg-empty-hints"><span>Epic → Feature → Story</span><span>Duplicate check</span><span>Dependencies</span><span>Human approval</span></div></div>}
-      <ReactFlow nodes={displayedNodes} edges={displayedEdges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>setSelectedId(n.id)} onPaneClick={()=>setSelectedId(null)} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding:0.18, minZoom:0.45, maxZoom:1 }} minZoom={.2} maxZoom={1.8} defaultEdgeOptions={{ style:{ strokeWidth:1.7 } }} proOptions={{hideAttribution:true}}><Background variant={BackgroundVariant.Dots} gap={24} size={1}/><MiniMap pannable zoomable nodeColor={n => ({Epic:"#8b5cf6",Feature:"#2563eb",Story:"#0d9488",Task:"#f97316"}[n.data.type] || "#64748b")}/><Controls/></ReactFlow></section>
+      <ReactFlow nodes={displayedNodes} edges={displayedEdges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>setSelectedId(n.id)} onPaneClick={()=>setSelectedId(null)} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding:0.18, minZoom:0.65, maxZoom:1 }} minZoom={.2} maxZoom={1.8} defaultEdgeOptions={{ style:{ strokeWidth:1.7 } }} proOptions={{hideAttribution:true}}><Background variant={BackgroundVariant.Dots} gap={24} size={1}/><MiniMap pannable zoomable nodeColor={n => ({Epic:"#8b5cf6",Feature:"#2563eb",Story:"#0d9488",Task:"#f97316"}[n.data.type] || "#64748b")}/><Controls/></ReactFlow></section>
       <aside className={`pg-inspector ${selectedNode?"open":""}`}>{selectedNode ? <>
         <div className="pg-inspector-head"><div><span>{selectedNode.data.jiraKey ? "Created ticket" : "Draft work item"}</span><strong>{selectedNode.data.type} · {selectedNode.data.title}</strong><small>{nodes.filter(n => n.data.parentId === selectedId).length} direct children</small></div><button onClick={()=>setSelectedId(null)}>×</button></div>
         <label>Type<select value={selectedNode.data.type} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>updateSelected({type:e.target.value,parentId:"",parentTitle:""})}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select></label>

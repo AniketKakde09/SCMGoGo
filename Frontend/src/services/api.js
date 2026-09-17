@@ -247,3 +247,15 @@ export function generateSADFile(datasetId, file) {
   const body = new FormData(); body.append("file", file);
   return request(`/datasets/${encodeURIComponent(datasetId)}/sad/upload`, { method: "POST", body });
 }
+
+export async function exportPlanningExcel(tickets) {
+  const response = await fetch(`${API_BASE_URL}/planning/export.xlsx`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tickets }),
+  });
+  if (!response.ok) {
+    const detail = await parseJsonSafe(response);
+    throw new Error(detail?.detail || `Excel export failed (${response.status})`);
+  }
+  return response.blob();
+}

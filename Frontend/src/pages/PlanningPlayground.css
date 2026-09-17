@@ -79,3 +79,32 @@
 .pg-node-feature .pg-node-type { color: #2563eb; }
 .pg-node-story .pg-node-type { color: #0d9488; }
 .pg-node-task .pg-node-type { color: #ea580c; }
+
+/* Focus mode hides duplicate workspace chrome while preserving canvas controls. */
+.fm-app-shell:has(.pg-focus-mode) .fm-app-sidebar{width:64px;flex-basis:64px}
+.fm-app-shell:has(.pg-focus-mode) .fm-brand{padding:18px 10px;justify-content:center}
+.fm-app-shell:has(.pg-focus-mode) .fm-brand>span:last-child,
+.fm-app-shell:has(.pg-focus-mode) .fm-nav-caption,
+.fm-app-shell:has(.pg-focus-mode) .fm-nav-copy,
+.fm-app-shell:has(.pg-focus-mode) .fm-nav-chevron,
+.fm-app-shell:has(.pg-focus-mode) .fm-sidebar-bottom{display:none}
+.fm-app-shell:has(.pg-focus-mode) .fm-global-header{height:0;flex-basis:0;padding:0;border:0;overflow:hidden}
+.pg-shell{height:100%;min-width:0;min-height:0}
+.pg-topbar{height:auto;min-height:62px;flex-shrink:0;flex-wrap:wrap;padding:10px 16px}
+.pg-title-wrap span{font-size:11px}
+.pg-actions{flex-wrap:wrap;justify-content:flex-end}
+.pg-actions button{white-space:nowrap}
+.pg-studio-controls{padding:8px 14px;gap:8px}
+.pg-filters{gap:5px}
+.pg-filters button{padding:7px 10px}
+.pg-toolbar{height:auto;min-height:48px;padding:7px 14px;flex-wrap:wrap;overflow:visible}
+.pg-compose-fields{display:none;align-items:center;gap:8px;flex:1;min-width:0}
+.pg-compose-fields.is-open{display:flex}
+.pg-compose-fields input{flex:1;min-width:110px;width:auto}
+.pg-main{flex:1;min-height:0;height:auto;overflow:hidden}
+.pg-canvas{height:100%;min-height:0}
+.pg-canvas .react-flow__minimap{width:155px!important;height:110px!important;opacity:.83}
+.pg-canvas .react-flow__minimap:hover{opacity:1}
+.pg-node{width:238px}
+@media(max-width:1100px){.pg-dataset-state,.pg-tip{display:none}.pg-actions{margin-left:auto}.pg-title-wrap span{display:none}}
+@media(max-width:700px){.pg-topbar{align-items:flex-start}.pg-actions{width:100%;justify-content:flex-start}.pg-compose-fields.is-open{flex-basis:100%;flex-wrap:wrap}.pg-inspector.open{position:absolute;right:0;top:0;bottom:0;z-index:10;width:min(92vw,400px);min-width:0;max-width:none}}

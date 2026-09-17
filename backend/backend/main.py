@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import shutil
 import threading
@@ -11,6 +12,7 @@ from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ingest import ingest
@@ -342,6 +344,59 @@ def intake_conversation(dataset_id: str, request: IntakeConversationRequest):
 class SADTextRequest(BaseModel):
     text: str = Field(min_length=60, max_length=70000)
     title: str = Field(default="System Architecture Document", max_length=200)
+
+
+class PlaygroundExportRequest(BaseModel):
+    tickets: list[dict[str, Any]] = Field(min_length=1, max_length=5000)
+
+
+@app.post("/planning/export.xlsx")
+def export_planning_excel(request: PlaygroundExportRequest):
+    """Export user-reviewed canvas drafts; no Jira calls or dataset writes."""
+    import pandas as pd
+    rows = []
+    for ticket in request.tickets:
+        # Only accept primitive cells; guard against Excel formula injection.
+        row = {}
+        for key in ("Local ID", "Issue Type", "Summary", "Parent ID", "Parent Type",
+                    "Parent Title", "Epic", "Feature", "Description", "Acceptance Criteria",
+                    "Story Points", "Priority", "Sprint", "SAD Section", "Source Excerpt",
+                    "Assumptions", "Duplicate Review", "Duplicate Candidates", "Jira Key",
+                    "Publish Status", "Dependencies"):
+            value = ticket.get(key, "")
+            if value is None:
+                value = ""
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value, ensure_ascii=False)
+            if not isinstance(value, (str, int, float, bool)):
+                value = str(value)
+            if isinstance(value, str):
+                value = value[:32000]
+                if value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+                    value = "'" + value
+            row[key] = value
+        rows.append(row)
+    buffer = io.BytesIO()
+    try:
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df = pd.DataFrame(rows)
+            df.to_excel(writer, sheet_name="Backlog", index=False)
+            ws = writer.sheets["Backlog"]
+            ws.freeze_panes = "A2"
+            ws.auto_filter.ref = ws.dimensions
+            from openpyxl.styles import Font, PatternFill, Alignment
+            for cell in ws[1]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill("solid", fgColor="173A64")
+                cell.alignment = Alignment(wrap_text=True)
+            for col in ws.columns:
+                letter = col[0].column_letter
+                ws.column_dimensions[letter].width = min(58, max(15, max(len(str(c.value or "")) for c in list(col)[:150]) + 2))
+    except ImportError as exc:
+        raise HTTPException(503, "Excel export requires openpyxl") from exc
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="foreman-planning-backlog.xlsx"', "Cache-Control": "no-store"})
 
 
 @app.post("/datasets/{dataset_id}/sad/generate")
