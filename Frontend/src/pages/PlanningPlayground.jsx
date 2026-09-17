@@ -115,6 +115,7 @@ function PlaygroundInner() {
   const [title, setTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newCriteria, setNewCriteria] = useState("");
+  const [newDod, setNewDod] = useState("");
   const [storyReview, setStoryReview] = useState(null);
   const [storyReviewBusy, setStoryReviewBusy] = useState(false);
   const [distinctReason, setDistinctReason] = useState("");
@@ -154,7 +155,9 @@ function PlaygroundInner() {
       id: idMap.get(ticket.id), type: "work",
       position: { x: 110 + Math.max(0, ["Epic", "Feature", "Story", "Task"].indexOf(ticket.type)) * 310, y: 110 + index * 115 },
       data: { type: ticket.type, title: ticket.title, description: ticket.description,
-        acceptanceCriteria: (ticket.acceptance_criteria || []).join("\n"), points: "", sprint: "", priority: "Medium",
+        acceptanceCriteria: (ticket.acceptance_criteria || []).join("\n"),
+        dod: (ticket.definition_of_done || []).slice(0, 2).join("\n"),
+        points: "", sprint: "", priority: "Medium",
         parentId: idMap.get(ticket.parent_id) || "", parentTitle: titles.get(ticket.parent_id) || "",
         parentSource: "Draft", sourceSectionId: ticket.source_section_id, sourceExcerpt: ticket.source_excerpt,
         assumptions: ticket.assumptions, duplicateCandidates: (ticket.duplicate_candidates || []).filter(candidate => candidate.confidence === "high" && candidate.ticket_id),
@@ -220,11 +223,12 @@ function PlaygroundInner() {
     const index = nodes.length;
     setNodes(current => [...current, {id, type:"work", position:{x:120+(index%4)*280,y:120+Math.floor(index/4)*180}, data:{
       type, title:cleanTitle, points:"", sprint:"", description:type==="Story"?newDescription:"",
-      acceptanceCriteria:type==="Story"?newCriteria:"", priority:"Medium", parentId, parentTitle,
+      acceptanceCriteria:type==="Story"?newCriteria:"", dod:type==="Story"?newDod.split("\n").map(x=>x.trim()).filter(Boolean).slice(0,2).join("\n"):"",
+      priority:"Medium", parentId, parentTitle,
       analysis:null, duplicate:null, jiraKey:"", storyReviewStatus:review?.decision === "needs_review" ? "reviewed_distinct" : review ? "new" : "",
       distinctReason:review?.decision === "needs_review" ? distinctReason.trim() : "",
     }}]);
-    setSelectedId(id); setTitle(""); setNewDescription(""); setNewCriteria(""); setStoryReview(null); setShowComposer(false);
+    setSelectedId(id); setTitle(""); setNewDescription(""); setNewCriteria(""); setNewDod(""); setStoryReview(null); setShowComposer(false);
     if (type === "Story") setNotice("Story added as an unscheduled draft. Confirm parent and run Smart Sprint Planner before publishing.");
   };
   const approveStory = () => {
@@ -313,6 +317,7 @@ function PlaygroundInner() {
       !data.description?.trim() && "description",
       ["Story", "Task"].includes(data.type) && !(Number(data.points) > 0) && "positive story points",
       data.type === "Story" && !data.acceptanceCriteria?.trim() && "acceptance criteria",
+      data.type === "Story" && !data.dod?.trim() && "Definition of Done",
       PARENT_TYPE[data.type] && !data.parentId && `${PARENT_TYPE[data.type]} placement`,
     ].filter(Boolean);
     if (missing.length) { setNotice(`Complete before publishing: ${missing.join(", ")}.`); return; }
@@ -336,6 +341,7 @@ function PlaygroundInner() {
       description:[data.description, data.parentTitle ? `Planning hierarchy: ${PARENT_TYPE[data.type] || "Parent"}: ${data.parentTitle}` : ""].filter(Boolean).join("\n\n"),
       priority:data.priority || "Medium", story_points:data.points || undefined, sprint:data.sprint || undefined,
       acceptance_criteria:(data.acceptanceCriteria || "").split("\n").map((x) => x.replace(/^[-•]\s*/, "").trim()).filter(Boolean),
+      definition_of_done:(data.dod || "").split("\n").map((x) => x.replace(/^[-•]\s*/, "").trim()).filter(Boolean).slice(0, 2),
     };
     const parentDraft = nodes.find((n) => n.id === data.parentId);
     if (data.type === "Feature" && parentDraft?.data?.type === "Epic" && parentDraft.data.jiraKey) issue.epic_link = parentDraft.data.jiraKey;
@@ -440,6 +446,7 @@ function PlaygroundInner() {
         priority:data.priority || "Medium", story_points:data.points || undefined,
         sprint:data.sprint || undefined,
         acceptance_criteria:(data.acceptanceCriteria || "").split("\n").map((line)=>line.replace(/^[-•]\s*/, "").trim()).filter(Boolean),
+        definition_of_done:(data.dod || "").split("\n").map((line)=>line.replace(/^[-•]\s*/, "").trim()).filter(Boolean).slice(0, 2),
         parentNodeId:parent && !parent.data.jiraKey ? parent.id : undefined,
         parentJiraKey:data.type === "Sub-task" ? parent?.data.jiraKey : undefined,
         epicNodeId:epic && epic.id !== node.id && !epic.data.jiraKey ? epic.id : undefined,
@@ -666,7 +673,7 @@ function PlaygroundInner() {
       </div>
       {(showComposer || searchOpen || openPanel) && <div className="pg-floating-popover" role="region" aria-label="Canvas options">
         <div className="pg-popover-heading"><strong>{showComposer ? "Add work item" : searchOpen ? "Find work" : openPanel==="filters" ? "Filter work" : openPanel==="connections" ? "Connect work" : openPanel==="settings" ? "Canvas preferences" : "More actions"}</strong><button type="button" aria-label="Close panel" onClick={()=>{setOpenPanel(null);setShowComposer(false);setSearchOpen(false);}}>×</button></div>
-        {showComposer && <div className="pg-popover-stack"><label>Issue type<select value={newType} onChange={e=>{setNewType(e.target.value);setStoryReview(null);}}>{TYPES.map(t=><option key={t}>{t}</option>)}</select></label><label>Title<input value={title} onChange={e=>{setTitle(e.target.value);setStoryReview(null);}} placeholder="What needs to be built?" autoFocus/></label>{newType === "Story" && <><label>Description<textarea rows="3" value={newDescription} onChange={e=>{setNewDescription(e.target.value);setStoryReview(null);}}/></label><label>Acceptance criteria<textarea rows="3" value={newCriteria} onChange={e=>{setNewCriteria(e.target.value);setStoryReview(null);}}/></label></>}{!storyReview && <button type="button" className="pg-popover-primary" disabled={storyReviewBusy} onClick={addNode}>{storyReviewBusy?"Comparing full backlog…":newType==="Story"?"Review Story before adding":"Add to canvas"}</button>}{storyReview && <section className="pg-ai-card" role="status"><strong>{storyReview.decision === "equivalent" ? "Equivalent ticket found — creation blocked" : storyReview.decision === "needs_review" ? "Similar work — decision required" : "No equivalent found"}</strong><p>Checked {storyReview.checked_original_count || 0} original tickets and {storyReview.checked_local_count || 0} local drafts.</p>{storyReview.matches?.map(m=><p key={`${m.source}-${m.id}`}><b>{m.id}</b> · {m.title} ({m.source}, semantic similarity {m.semantic_similarity})</p>)}<p>Suggested parent: {storyReview.suggested_parent_id || "Choose manually"}. Sprint: Unscheduled. {storyReview.placement_reason}</p>{storyReview.decision === "needs_review" && <label>Why is this genuinely different?<textarea rows="2" value={distinctReason} onChange={e=>setDistinctReason(e.target.value)} placeholder="Compare scope and acceptance criteria"/></label>}{storyReview.decision !== "equivalent" && <button type="button" className="pg-popover-primary" onClick={approveStory}>Approve and add draft</button>}<button type="button" onClick={()=>setStoryReview(null)}>Back to edit</button></section>}</div>}
+        {showComposer && <div className="pg-popover-stack"><label>Issue type<select value={newType} onChange={e=>{setNewType(e.target.value);setStoryReview(null);}}>{TYPES.map(t=><option key={t}>{t}</option>)}</select></label><label>Title<input value={title} onChange={e=>{setTitle(e.target.value);setStoryReview(null);}} placeholder="What needs to be built?" autoFocus/></label>{newType === "Story" && <><label>Description<textarea rows="3" value={newDescription} onChange={e=>{setNewDescription(e.target.value);setStoryReview(null);}}/></label><label>Acceptance criteria<textarea rows="3" value={newCriteria} onChange={e=>{setNewCriteria(e.target.value);setStoryReview(null);}}/></label><label>Definition of Done<textarea rows="3" value={newDod} onChange={e=>{setNewDod(e.target.value.split("\n").slice(0,2).join("\n"));setStoryReview(null);}} placeholder="Up to 2 DoD items, one per line"/></label></>}{!storyReview && <button type="button" className="pg-popover-primary" disabled={storyReviewBusy} onClick={addNode}>{storyReviewBusy?"Comparing full backlog…":newType==="Story"?"Review Story before adding":"Add to canvas"}</button>}{storyReview && <section className="pg-ai-card" role="status"><strong>{storyReview.decision === "equivalent" ? "Equivalent ticket found — creation blocked" : storyReview.decision === "needs_review" ? "Similar work — decision required" : "No equivalent found"}</strong><p>Checked {storyReview.checked_original_count || 0} original tickets and {storyReview.checked_local_count || 0} local drafts.</p>{storyReview.matches?.map(m=><p key={`${m.source}-${m.id}`}><b>{m.id}</b> · {m.title} ({m.source}, semantic similarity {m.semantic_similarity})</p>)}<p>Suggested parent: {storyReview.suggested_parent_id || "Choose manually"}. Sprint: Unscheduled. {storyReview.placement_reason}</p>{storyReview.decision === "needs_review" && <label>Why is this genuinely different?<textarea rows="2" value={distinctReason} onChange={e=>setDistinctReason(e.target.value)} placeholder="Compare scope and acceptance criteria"/></label>}{storyReview.decision !== "equivalent" && <button type="button" className="pg-popover-primary" onClick={approveStory}>Approve and add draft</button>}<button type="button" onClick={()=>setStoryReview(null)}>Back to edit</button></section>}</div>}
         {searchOpen && <div className="pg-popover-stack"><input aria-label="Search work items" autoFocus placeholder="Search title, description, or Jira key…" value={searchText} onChange={e=>setSearchText(e.target.value)}/>{searchText && <button type="button" onClick={()=>setSearchText("")}>Clear search</button>}<small>{displayedNodes.length} matching visible items</small></div>}
         {openPanel==="filters" && <div className="pg-filter-options">{["All","Epic","Feature","Story","Task","Duplicates"].map(type=><button type="button" key={type} className={typeFilter===type?"is-active":""} onClick={()=>{setTypeFilter(type);setOpenPanel(null);}}><span>{type==="All"?"All work":type==="Duplicates"?"Needs duplicate review":`${type}s`}</span><b>{type==="All"?nodes.length:type==="Duplicates"?nodes.filter(n=>needsDuplicateReview(n.data)).length:counts[type]}</b></button>)}</div>}
         {openPanel==="connections" && <div className="pg-popover-stack"><p>Drag between node handles to create a relationship.</p><label>Relationship<select value={relationMode} onChange={e=>setRelationMode(e.target.value)}><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select></label><small>Auto uses hierarchy when the issue types permit it; otherwise it creates a related-work link.</small></div>}
@@ -702,6 +709,7 @@ function PlaygroundInner() {
         <label>Sprint<input value={selectedNode.data.sprint||""} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>updateSelected({sprint:e.target.value})} placeholder="Jira sprint ID"/></label>
         <label>Description<textarea rows="4" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.description||""} onChange={(e)=>updateSelected({description:e.target.value})} placeholder="What is needed and why?"/></label>
         {selectedNode.data.type==="Story" && <label>Acceptance criteria<textarea rows="4" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.acceptanceCriteria||""} onChange={(e)=>updateSelected({acceptanceCriteria:e.target.value})} placeholder="One criterion per line…"/></label>}
+        {selectedNode.data.type==="Story" && <label>Definition of Done<textarea rows="3" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.dod||""} onChange={(e)=>updateSelected({dod:e.target.value.split("\n").slice(0,2).join("\n")})} placeholder="Up to 2 DoD items, one per line…"/></label>}
         {selectedNode.data.sourceSectionId && <section className="pg-ai-card"><strong>SAD traceability</strong><p>Source section: {selectedNode.data.sourceSectionId}</p><p>{selectedNode.data.sourceExcerpt || "No source excerpt returned; verify against the document."}</p>{selectedNode.data.assumptions?.length > 0 && <p>Assumptions to review: {selectedNode.data.assumptions.join("; ")}</p>}</section>}
         {highConfidenceCandidates(selectedNode.data).length > 0 && <section className="pg-ai-card"><strong>High-confidence duplicate candidates · review required</strong><p>Strong title and description overlap; verify scope before publishing.</p>{highConfidenceCandidates(selectedNode.data).map(candidate => <p key={candidate.ticket_id}><b>{candidate.ticket_id}</b> · {candidate.title} · score {candidate.score}</p>)}<label><input type="checkbox" checked={Boolean(selectedNode.data.duplicateReviewed)} disabled={Boolean(selectedNode.data.jiraKey)} onChange={e => updateSelected({ duplicateReviewed: e.target.checked })}/> I reviewed these candidates and confirm this is separate new work.</label></section>}
         {selectedNode.data.type!=="Note" && <section className="pg-ai-card"><div className="pg-ai-head"><div><span className="pg-spark">✦</span><strong>Foreman review</strong></div><button onClick={analyzeSelected} disabled={analysisBusy||Boolean(selectedNode.data.jiraKey)}>{analysisBusy?"Checking…":selectedNode.data.analysis?"Check again":"Analyze"}</button></div>

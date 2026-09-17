@@ -685,6 +685,7 @@ Return JSON only with this shape:
     "title": "...",
     "description": "...",
     "acceptance_criteria": ["..."],
+    "definition_of_done": ["..."],
     "story_points": 1,
     "priority": "...",
     "parent_id": "existing EPIC id",
@@ -700,6 +701,7 @@ CREATE mode rules (only apply when creation_intent is true):
 - When the available context is sufficient, return story_ready.
 - For story_ready, parent_id MUST be one of the supplied Epic candidate IDs and sad_section_id MUST be a supplied SAD section ID.
 - Keep acceptance criteria concrete and testable. Do not invent IDs, names, integrations, dates, or requirements.
+- For Definition of Done, return AT MOST 2 short, verifiable items derived strictly from the user's request and supplied workbook-backed evidence. Do not invent generic testing/security/deployment requirements. If the input does not support a DoD item, return an empty list.
 - If no suitable Epic can be grounded in evidence, ask the user to clarify which existing Epic the Story belongs under.
 - Never create a Jira ticket; this is only a canvas Story draft.
 """
@@ -779,6 +781,7 @@ CREATE mode rules (only apply when creation_intent is true):
                             "title": title,
                             "description": latest,
                             "acceptance_criteria": [],
+                            "definition_of_done": [],
                             "story_points": None,
                             "priority": "",
                             "parent_id": epic["id"],
@@ -813,6 +816,18 @@ CREATE mode rules (only apply when creation_intent is true):
                     story["id"] = f"NEW-STORY-{uuid.uuid4().hex[:8].upper()}"
                     story["type"] = "Story"
                     story["matched"] = False
+
+                    # DoD is intentionally capped at two short, input-grounded
+                    # items at the application boundary as well as in the prompt.
+                    raw_dod = story.get("definition_of_done", [])
+                    if not isinstance(raw_dod, list):
+                        raw_dod = []
+                    story["definition_of_done"] = [
+                        str(item).strip()[:300]
+                        for item in raw_dod
+                        if str(item).strip()
+                    ][:2]
+
                     assessment["story"] = story
 
         story = assessment.get("story")

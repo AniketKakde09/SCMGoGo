@@ -70,6 +70,13 @@ ACCEPTANCE_CRITERIA_FIELD = os.environ.get(
     "customfield_10335",
 )
 
+# Optional Jira custom field for Definition of Done. Leave unset if the Jira
+# project has no dedicated DoD field.
+DEFINITION_OF_DONE_FIELD = os.environ.get(
+    "JIRA_DEFINITION_OF_DONE_FIELD",
+    "",
+)
+
 
 # ============================================================
 # Jira API router
@@ -560,6 +567,29 @@ def build_jira_payload(
             fields[
                 ACCEPTANCE_CRITERIA_FIELD
             ] = criteria
+
+    # ========================================================
+    # Definition of Done
+    # ========================================================
+
+    definition_of_done = (
+        issue.get("definition_of_done")
+        or issue.get("definitionOfDone")
+        or issue.get("dod")
+        or issue.get("Definition of Done")
+    )
+
+    if has_value(definition_of_done) and DEFINITION_OF_DONE_FIELD:
+        dod_items = (
+            definition_of_done
+            if isinstance(definition_of_done, list)
+            else str(definition_of_done).splitlines()
+        )
+        dod_items = [str(x).strip() for x in dod_items if str(x).strip()][:2]
+        if dod_items:
+            fields[DEFINITION_OF_DONE_FIELD] = "\n".join(
+                f"• {item}" for item in dod_items
+            )
 
     # ========================================================
     # Epic Link

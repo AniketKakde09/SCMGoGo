@@ -177,6 +177,20 @@ def _validate_batch(tickets, chunk):
     for item in tickets:
         if not isinstance(item, dict) or item.get('type') not in TYPES or not str(item.get('title', '')).strip():
             raise ValueError('Ticket has invalid type or title')
+        dod = item.get('definition_of_done', [])
+        if dod is None:
+            dod = []
+        if not isinstance(dod, list):
+            raise ValueError('definition_of_done must be a list')
+        if len(dod) > 2:
+            raise ValueError('definition_of_done must contain at most 2 items')
+        if item.get('type') != 'Story':
+            dod = []
+        for entry in dod:
+            if not str(entry).strip():
+                raise ValueError('definition_of_done cannot contain blank items')
+        item['definition_of_done'] = [str(x).strip()[:300] for x in dod if str(x).strip()][:2]
+
         key = str(item.get('temp_id', '')).strip()
         if not key or key in by_id:
             raise ValueError('Missing or duplicate ticket temp_id')
@@ -218,10 +232,14 @@ def _generate_batch(llm, chunk, index, total, depth=0):
         'For actionable content return one Epic, one child Feature and optionally one child Story OR Task. '
         'Each ticket must have temp_id, parent_temp_id (empty for Epic), type, title, '
         'description (maximum 120 characters), acceptance_criteria (at most 2 short strings), '
+        'definition_of_done (AT MOST 2 short strings, only when the supplied excerpt supports them), '
         'source_section_id, source_excerpt (short quotation from excerpt), assumptions (at most 1 short string). '
         'Use only the provided source_section_id. Use IDs e1, f1, s1 within this batch. '
         'Hierarchy Epic -> Feature -> Story/Task. Do not invent requirements or Jira keys. '
         'Do not add generic security, testing or deployment work unless explicitly supported. '
+        'Definition of Done must describe verifiable completion outcomes derived from the supplied excerpt; '
+        'do not invent project-wide standards. Return at most 2 DoD items and use [] when the excerpt does not '
+        'provide enough evidence. DoD applies to Stories; for Epic/Feature/Task return []. '
         'Keep the entire JSON short and complete; no markdown.'
     )
     payload = json.dumps({'source_section_id': chunk['id'], 'section_title': chunk['title'],
@@ -416,6 +434,7 @@ def generate_proposal(text: str, excel_path: Path, document_title: str):
         for item in raw:
             parent = str(item.get('parent_temp_id') or '').strip()
             criteria = item.get('acceptance_criteria', [])
+            dod = item.get('definition_of_done', [])
             assumptions = item.get('assumptions', [])
             staged.append({
                 'id': local_ids[str(item['temp_id']).strip()],
@@ -423,6 +442,7 @@ def generate_proposal(text: str, excel_path: Path, document_title: str):
                 'type': item['type'], 'title': str(item['title']).strip()[:255],
                 'description': str(item.get('description', '')).strip(),
                 'acceptance_criteria': [str(x) for x in criteria] if isinstance(criteria, list) else [],
+                'definition_of_done': [str(x) for x in dod if str(x).strip()][:2] if isinstance(dod, list) else [],
                 'source_section_id': chunk['id'],
                 'source_excerpt': str(item['source_excerpt']).strip()[:500],
                 'assumptions': [str(x) for x in assumptions] if isinstance(assumptions, list) else [],

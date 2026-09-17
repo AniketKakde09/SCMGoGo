@@ -1004,6 +1004,7 @@ function getAvailableParentOptions(issue, allIssues = [], epics = []) {
 
 function applyIssueEdits(issue, values) {
   const acceptanceCriteria = normalizeLines(values.acceptanceCriteria);
+  const dod = normalizeLines(values.dod).slice(0, 2);
   const storyPoints = values.storyPoints === "" ? null : Number(values.storyPoints);
 
   const issueType = String(issue?.type || issue?.issue_type || "").toLowerCase();
@@ -1029,10 +1030,10 @@ function applyIssueEdits(issue, values) {
     acceptance_criteria: acceptanceCriteria,
     acceptanceCriteria,
     hasAcceptanceCriteria: acceptanceCriteria.length > 0,
-    dod: values.dod.trim(),
-    definition_of_done: values.dod.trim(),
-    definitionOfDone: values.dod.trim(),
-    hasDoD: Boolean(values.dod.trim()),
+    dod,
+    definition_of_done: dod,
+    definitionOfDone: dod,
+    hasDoD: dod.length > 0,
   };
 }
 
@@ -1171,8 +1172,9 @@ function EditableIssueBody({ panel, onSave }) {
         <textarea
           value={values.dod}
           onChange={(e) => update("dod", e.target.value)}
-          placeholder="Enter the Definition of Done"
+          placeholder="Enter up to 2 DoD items, one per line"
         />
+        <div className="smart-helper-row"><span>Maximum 2 items. Each non-empty line becomes a DoD item.</span></div>
       </div>
 
       <div className="smart-panel-footer">
@@ -1854,6 +1856,14 @@ function IntakePanel({ datasetId, onClose, onResult }) {
               <ul className="intake-story-criteria">
                 {story.acceptance_criteria.map((criterion, index) => <li key={index}>{criterion}</li>)}
               </ul>
+            )}
+            {story.definition_of_done?.length > 0 && (
+              <div className="intake-story-dod">
+                <strong>Definition of Done</strong>
+                <ul className="intake-story-criteria">
+                  {story.definition_of_done.slice(0, 2).map((item, index) => <li key={index}>{item}</li>)}
+                </ul>
+              </div>
             )}
           </div>
         )}
