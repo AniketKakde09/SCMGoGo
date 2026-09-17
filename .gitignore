@@ -1,0 +1,10 @@
+.venv/
+**/.venv/
+# Common Python ignores
+__pycache__/
+*.py[cod]
+.env
+
+# Keep local chroma storage entry explicit (if present in backend/.gitignore)
+# vectorstore/chroma/*
+# !vectorstore/chroma/.gitkeep
