@@ -10,6 +10,7 @@ import pandas as pd
 
 from llm import LLMClient
 from search import ForemanSearch
+from security import sanitize_text
 
 
 TICKET_RE = re.compile(r"\b(?:EPIC|F|T)-\d+\b", re.IGNORECASE)
@@ -510,7 +511,13 @@ class IntakeProcessor:
         }
 
     def build_evidence(self, intake_text: str) -> dict[str, Any]:
-        text = self.clean_text(intake_text)
+        # Defense in depth: IntakeProcessor may also be called directly (for
+        # example by the CLI or another backend module), so sanitize here in
+        # addition to the FastAPI request boundary. This guarantees that raw
+        # intake text does not enter retrieval or the LLM even when this class
+        # is used outside main.py.
+        safe = sanitize_text(intake_text)
+        text = self.clean_text(safe.text)
         if not text:
             raise ValueError("Intake text cannot be empty.")
 
@@ -522,7 +529,9 @@ class IntakeProcessor:
         canvas_graph = self.build_canvas_graph(ticket_ids, dependencies)
 
         return {
-            "intake": {"raw_text": intake_text, "cleaned_text": text},
+            # Keep only the sanitized intake text in the evidence/report.
+            # Never retain or return the original raw text.
+            "intake": {"raw_text": text, "cleaned_text": text},
             "retrieval": results,
             "architecture_areas": architecture,
             "related_tickets": self._related_tickets(ticket_ids),
@@ -717,7 +726,14 @@ CREATE mode rules (only apply when creation_intent is true):
             role = str(item.get("role", "")).strip().lower()
             content = self.clean_text(item.get("content", ""))
             if role in {"user", "assistant"} and content:
-                normalized_history.append({"role": role, "content": content})
+                # Sanitize history as well as the latest message. This is
+                # defense in depth for callers that bypass FastAPI.
+                content = self.clean_text(sanitize_text(content).text)
+                if content:
+                    normalized_history.append({"role": role, "content": content})
+        latest = self.clean_text(sanitize_text(latest).text)
+        if not latest:
+            raise ValueError("Intake text cannot be empty after sanitization.")
         normalized_history.append({"role": "user", "content": latest})
 
         creation_intent = self._wants_ticket_creation(

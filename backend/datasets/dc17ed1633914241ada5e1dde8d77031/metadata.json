@@ -20,5 +20,7 @@
     "missing_ticket_nodes": [
       "T-9999"
     ]
-  }
+  },
+  "sanitized": true,
+  "sanitized_at": "2026-09-15T22:00:08.454019+00:00"
 }
