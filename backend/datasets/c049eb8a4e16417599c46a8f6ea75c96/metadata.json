@@ -1,9 +1,0 @@
-{
-  "dataset_id": "c049eb8a4e16417599c46a8f6ea75c96",
-  "filename": "Foreman_Synthetic_Dataset.xlsx",
-  "status": "ingesting",
-  "created_at": "2026-09-16T16:42:00.871145+00:00",
-  "updated_at": "2026-09-16T16:42:00.879478+00:00",
-  "collection_name": "foreman_c049eb8a4e16417599c46a8f6ea75c96",
-  "error": null
-}
