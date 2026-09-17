@@ -7,6 +7,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "./PlanningPlayground.css";
 import SmartSprintPlanner from "./SmartSprintPlanner";
+import { reviewStory } from "../services/api";
 import { getCanvasGraph, runIntake, startJiraSync, watchJiraSync, exportPlanningExcel } from "../services/api";
 
 const TYPES = ["Epic", "Feature", "Story", "Task", "Sub-task", "Note"];
@@ -112,6 +113,11 @@ function PlaygroundInner() {
   const [selectedId, setSelectedId] = useState(null);
   const [newType, setNewType] = useState("Story");
   const [title, setTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newCriteria, setNewCriteria] = useState("");
+  const [storyReview, setStoryReview] = useState(null);
+  const [storyReviewBusy, setStoryReviewBusy] = useState(false);
+  const [distinctReason, setDistinctReason] = useState("");
   const [datasetGraph, setDatasetGraph] = useState(null);
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
@@ -186,17 +192,50 @@ function PlaygroundInner() {
     return [...existing, ...drafts];
   }, [existingByType, nodes, selectedId, selectedNode]);
 
-  const addNode = useCallback(() => {
-    const cleanTitle = title.trim() || `New ${newType}`;
+  const localStoryDrafts = (excludeId = "") => nodes.filter(n => n.id !== excludeId && ["Story", "Task", "Feature"].includes(n.data.type)).map(n => ({
+    id:n.id, title:n.data.title, description:n.data.description || "", acceptance_criteria:n.data.acceptanceCriteria || "", type:n.data.type, parent_id:n.data.parentId || "", sprint:n.data.sprint || ""
+  }));
+  const addNode = async () => {
+    const cleanTitle = title.trim();
+    if (!cleanTitle) { setNotice("Enter a work item title."); return; }
+    if (newType === "Story") {
+      if (!datasetId) { setNotice("Connect the original dataset before adding a Story."); return; }
+      if (!newDescription.trim() || !newCriteria.trim()) { setNotice("Provide a description and acceptance criteria before reviewing a Story."); return; }
+      setStoryReviewBusy(true); setStoryReview(null); setDistinctReason("");
+      try {
+        const result = await reviewStory(datasetId, {story:{title:cleanTitle, description:newDescription, acceptance_criteria:newCriteria, type:"Story"}, local_drafts:localStoryDrafts()});
+        setStoryReview(result);
+      } catch(error) { setNotice(error.message || "Story review failed; nothing was created."); }
+      finally { setStoryReviewBusy(false); }
+      return;
+    }
+    createLocalNode({title:cleanTitle, type:newType});
+  };
+  const createLocalNode = ({title:cleanTitle, type, review=null}) => {
     const id = `draft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const parentId = review?.suggested_parent_id || "";
+    const parent = nodes.find(n => n.id === parentId);
+    const existing = [...(datasetGraph?.epics || []), ...(datasetGraph?.issues || [])].find(n => String(n.id) === parentId);
+    const parentTitle = parent?.data?.title || existing?.title || "";
     const index = nodes.length;
-    setNodes((current) => [...current, { id, type:"work", position:{ x:120+(index%4)*280, y:120+Math.floor(index/4)*180 }, data:{ type:newType, title:cleanTitle, points:"", sprint:"", description:"", acceptanceCriteria:"", priority:"Medium", parentId:"", parentTitle:"", analysis:null, duplicate:null, jiraKey:"" } }]);
-    setSelectedId(id); setTitle("");
-  }, [newType, nodes.length, setNodes, title]);
+    setNodes(current => [...current, {id, type:"work", position:{x:120+(index%4)*280,y:120+Math.floor(index/4)*180}, data:{
+      type, title:cleanTitle, points:"", sprint:"", description:type==="Story"?newDescription:"",
+      acceptanceCriteria:type==="Story"?newCriteria:"", priority:"Medium", parentId, parentTitle,
+      analysis:null, duplicate:null, jiraKey:"", storyReviewStatus:review?.decision === "needs_review" ? "reviewed_distinct" : review ? "new" : "",
+      distinctReason:review?.decision === "needs_review" ? distinctReason.trim() : "",
+    }}]);
+    setSelectedId(id); setTitle(""); setNewDescription(""); setNewCriteria(""); setStoryReview(null); setShowComposer(false);
+    if (type === "Story") setNotice("Story added as an unscheduled draft. Confirm parent and run Smart Sprint Planner before publishing.");
+  };
+  const approveStory = () => {
+    if (!storyReview || storyReview.decision === "equivalent") return;
+    if (storyReview.decision === "needs_review" && distinctReason.trim().length < 12) { setNotice("Explain why this Story differs from the similar work (at least 12 characters)."); return; }
+    createLocalNode({title:title.trim(), type:"Story", review:storyReview});
+  };
 
   const updateNodeById = useCallback((nodeId, patch) => {
     if (!nodeId) return;
-    setNodes((current) => current.map((n) => n.id === nodeId ? { ...n, data:{ ...n.data, ...patch, ...(Object.keys(patch).some((k) => ["title","description","type"].includes(k)) ? { analysis:null, duplicate:null, suggestedParentId:"", duplicateReviewed:false } : {}) } } : n));
+    setNodes((current) => current.map((n) => n.id === nodeId ? { ...n, data:{ ...n.data, ...patch, ...(Object.keys(patch).some((k) => ["title","description","type"].includes(k)) ? { analysis:null, duplicate:null, suggestedParentId:"", duplicateReviewed:false, storyReviewStatus:"", distinctReason:"" } : {}) } } : n));
   }, [setNodes]);
   const updateSelected = useCallback((patch) => updateNodeById(selectedId, patch), [selectedId, updateNodeById]);
 
@@ -279,12 +318,21 @@ function PlaygroundInner() {
     if (missing.length) { setNotice(`Complete before publishing: ${missing.join(", ")}.`); return; }
     if (needsDuplicateReview(data)) { setNotice("Review the SAD duplicate candidates before publishing."); return; }
     if (highConfidenceCandidates(data).length && !window.confirm(`Potential overlap with ${data.duplicate.ticket_id}. Have you reviewed it and confirmed this is genuinely new work?`)) return;
+    if (data.type === "Story") {
+      if (!datasetId) { setNotice("Connect a dataset to recheck this Story before Jira publishing."); return; }
+      try {
+        const review = await reviewStory(datasetId, {story:{id:selectedNode.id,title:data.title,description:data.description,acceptance_criteria:data.acceptanceCriteria,type:"Story",parent_id:data.parentId||""},local_drafts:localStoryDrafts(selectedNode.id)});
+        if (review.decision === "equivalent" || (review.decision === "needs_review" && (!data.distinctReason || data.distinctReason.trim().length < 12))) {
+          setNotice(`Jira blocked: ${review.decision === "equivalent" ? "equivalent ticket exists" : "similar work needs an explicit distinct-scope review"}. ${review.matches.map(m=>m.id).join(", ")}`); return;
+        }
+      } catch(error) { setNotice(`Jira blocked: duplicate recheck failed: ${error.message}`); return; }
+    }
     if (!window.confirm(`Publish "${data.title}" to sandbox Jira? This creates a real ticket.`)) return;
     setPublishBusy(true);
     setNotice("Starting Jira creation…");
     const nodeId = selectedNode.id;
     const issue = {
-      nodeId, issue_type:data.type, summary:data.title,
+      nodeId, issue_type:data.type, summary:data.title, dataset_id:datasetId, duplicate_override_reason:data.distinctReason || "", local_drafts:localStoryDrafts(nodeId),
       description:[data.description, data.parentTitle ? `Planning hierarchy: ${PARENT_TYPE[data.type] || "Parent"}: ${data.parentTitle}` : ""].filter(Boolean).join("\n\n"),
       priority:data.priority || "Medium", story_points:data.points || undefined, sprint:data.sprint || undefined,
       acceptance_criteria:(data.acceptanceCriteria || "").split("\n").map((x) => x.replace(/^[-•]\s*/, "").trim()).filter(Boolean),
@@ -365,6 +413,13 @@ function PlaygroundInner() {
     if (unreviewed.length) { setNotice(`Review duplicate candidates for ${unreviewed.length} SAD drafts before creating tickets.`); return; }
     const duplicates = pending.filter((node)=>highConfidenceCandidates(node.data).length);
     if (duplicates.length && !window.confirm(`${duplicates.length} drafts have potential duplicate matches. Review these before publishing. Continue anyway?`)) return;
+    try {
+      for (const node of pending.filter(n=>n.data.type === "Story")) {
+        if (!datasetId) throw new Error("Connect a dataset before publishing Stories.");
+        const review = await reviewStory(datasetId, {story:{id:node.id,title:node.data.title,description:node.data.description,acceptance_criteria:node.data.acceptanceCriteria,type:"Story",parent_id:node.data.parentId||""},local_drafts:localStoryDrafts(node.id)});
+        if (review.decision === "equivalent" || (review.decision === "needs_review" && (!node.data.distinctReason || node.data.distinctReason.trim().length < 12))) throw new Error(`${node.data.title}: ${review.decision}; ${review.matches.map(m=>m.id).join(", ")}. Resolve before publishing.`);
+      }
+    } catch(error) { setNotice(`Jira blocked: ${error.message}`); return; }
     if (!window.confirm(`Create ${pending.length} Jira tickets in Epic → Feature → Story/Task → Sub-task order? This writes to Jira and cannot be undone here.`)) return;
     const findEpic = (node) => {
       const seen = new Set(); let current = node;
@@ -380,7 +435,7 @@ function PlaygroundInner() {
       const parent = byId.get(data.parentId);
       const epic = findEpic(node);
       return {
-        nodeId:node.id, issue_type:data.type, summary:data.title,
+        nodeId:node.id, issue_type:data.type, summary:data.title, dataset_id:datasetId, duplicate_override_reason:data.distinctReason || "", local_drafts:localStoryDrafts(node.id),
         description:[data.description, data.parentTitle ? `Planning hierarchy: ${data.parentTitle}` : ""].filter(Boolean).join("\n\n"),
         priority:data.priority || "Medium", story_points:data.points || undefined,
         sprint:data.sprint || undefined,
@@ -611,7 +666,7 @@ function PlaygroundInner() {
       </div>
       {(showComposer || searchOpen || openPanel) && <div className="pg-floating-popover" role="region" aria-label="Canvas options">
         <div className="pg-popover-heading"><strong>{showComposer ? "Add work item" : searchOpen ? "Find work" : openPanel==="filters" ? "Filter work" : openPanel==="connections" ? "Connect work" : openPanel==="settings" ? "Canvas preferences" : "More actions"}</strong><button type="button" aria-label="Close panel" onClick={()=>{setOpenPanel(null);setShowComposer(false);setSearchOpen(false);}}>×</button></div>
-        {showComposer && <div className="pg-popover-stack"><label>Issue type<select value={newType} onChange={e=>setNewType(e.target.value)}>{TYPES.map(t=><option key={t}>{t}</option>)}</select></label><label>Title<input value={title} onChange={e=>setTitle(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){addNode();setShowComposer(false);}}} placeholder="What needs to be built?" autoFocus/></label><button type="button" className="pg-popover-primary" onClick={()=>{addNode();setShowComposer(false);}}>Add to canvas</button></div>}
+        {showComposer && <div className="pg-popover-stack"><label>Issue type<select value={newType} onChange={e=>{setNewType(e.target.value);setStoryReview(null);}}>{TYPES.map(t=><option key={t}>{t}</option>)}</select></label><label>Title<input value={title} onChange={e=>{setTitle(e.target.value);setStoryReview(null);}} placeholder="What needs to be built?" autoFocus/></label>{newType === "Story" && <><label>Description<textarea rows="3" value={newDescription} onChange={e=>{setNewDescription(e.target.value);setStoryReview(null);}}/></label><label>Acceptance criteria<textarea rows="3" value={newCriteria} onChange={e=>{setNewCriteria(e.target.value);setStoryReview(null);}}/></label></>}{!storyReview && <button type="button" className="pg-popover-primary" disabled={storyReviewBusy} onClick={addNode}>{storyReviewBusy?"Comparing full backlog…":newType==="Story"?"Review Story before adding":"Add to canvas"}</button>}{storyReview && <section className="pg-ai-card" role="status"><strong>{storyReview.decision === "equivalent" ? "Equivalent ticket found — creation blocked" : storyReview.decision === "needs_review" ? "Similar work — decision required" : "No equivalent found"}</strong><p>Checked {storyReview.checked_original_count || 0} original tickets and {storyReview.checked_local_count || 0} local drafts.</p>{storyReview.matches?.map(m=><p key={`${m.source}-${m.id}`}><b>{m.id}</b> · {m.title} ({m.source}, semantic similarity {m.semantic_similarity})</p>)}<p>Suggested parent: {storyReview.suggested_parent_id || "Choose manually"}. Sprint: Unscheduled. {storyReview.placement_reason}</p>{storyReview.decision === "needs_review" && <label>Why is this genuinely different?<textarea rows="2" value={distinctReason} onChange={e=>setDistinctReason(e.target.value)} placeholder="Compare scope and acceptance criteria"/></label>}{storyReview.decision !== "equivalent" && <button type="button" className="pg-popover-primary" onClick={approveStory}>Approve and add draft</button>}<button type="button" onClick={()=>setStoryReview(null)}>Back to edit</button></section>}</div>}
         {searchOpen && <div className="pg-popover-stack"><input aria-label="Search work items" autoFocus placeholder="Search title, description, or Jira key…" value={searchText} onChange={e=>setSearchText(e.target.value)}/>{searchText && <button type="button" onClick={()=>setSearchText("")}>Clear search</button>}<small>{displayedNodes.length} matching visible items</small></div>}
         {openPanel==="filters" && <div className="pg-filter-options">{["All","Epic","Feature","Story","Task","Duplicates"].map(type=><button type="button" key={type} className={typeFilter===type?"is-active":""} onClick={()=>{setTypeFilter(type);setOpenPanel(null);}}><span>{type==="All"?"All work":type==="Duplicates"?"Needs duplicate review":`${type}s`}</span><b>{type==="All"?nodes.length:type==="Duplicates"?nodes.filter(n=>needsDuplicateReview(n.data)).length:counts[type]}</b></button>)}</div>}
         {openPanel==="connections" && <div className="pg-popover-stack"><p>Drag between node handles to create a relationship.</p><label>Relationship<select value={relationMode} onChange={e=>setRelationMode(e.target.value)}><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select></label><small>Auto uses hierarchy when the issue types permit it; otherwise it creates a related-work link.</small></div>}
@@ -654,6 +709,7 @@ function PlaygroundInner() {
           {(selectedNode.data.analysis.architecture_areas||[]).length>0&&<div className="pg-suggestions"><span>Architecture context</span>{selectedNode.data.analysis.architecture_areas.slice(0,3).map((a)=><button key={a.sad_section_id} title={a.sad_title}>{a.sad_section_id} · {a.title}</button>)}</div>}</> : <p>Analyze before publishing to surface related work, architecture context and dependency evidence.</p>}
         </section>}
         <div className="pg-readiness"><strong>Readiness</strong>{readinessMissing.length ? <span>Needs {readinessMissing.join(", ")}</span> : <span className="ready">Ready for review</span>}</div>
+        {selectedNode.data.type === "Story" && !selectedNode.data.jiraKey && <section className="pg-ai-card"><strong>Distinct-scope decision (only if similar work is found)</strong><p>Explain how this Story differs in behavior or acceptance criteria. Exact equivalent titles remain blocked.</p><textarea rows="2" aria-label="Distinct-scope justification" value={selectedNode.data.distinctReason || ""} onChange={e=>updateSelected({distinctReason:e.target.value})} placeholder="This Story differs because…"/></section>}
         {selectedNode.data.jiraKey ? <div className="pg-created-box">✓ Created in Jira {jiraLink(selectedNode.data.jiraKey) ? <a href={jiraLink(selectedNode.data.jiraKey)} target="_blank" rel="noopener noreferrer">{selectedNode.data.jiraKey} ↗</a> : <strong>{selectedNode.data.jiraKey}</strong>}</div> : selectedNode.data.type==="Note" ? <button className="pg-create" onClick={()=>updateSelected({type:"Task"})}>Convert note to Task</button> : <button className="pg-create" disabled={publishBusy||!selectedNode.data.title?.trim()||readinessMissing.length>0||needsDuplicateReview(selectedNode.data)} onClick={publishSelected}>{publishBusy?"Creating…":"Create ticket in Jira"}</button>}
         <div className="pg-inspector-note">Creation is always explicit. Existing dataset IDs are used for planning context only and are never assumed to be Jira keys.</div><button className="pg-delete" disabled={publishBusy || Boolean(selectedNode.data.jiraKey)} onClick={deleteSelected}>Delete work item</button>
       </> : <div className="pg-inspector-empty"><strong>Inspector</strong><p>Select a card to edit it, choose its hierarchy, check for overlap and create it in Jira.</p></div>}</aside></main>

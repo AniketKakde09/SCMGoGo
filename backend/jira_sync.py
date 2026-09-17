@@ -1054,6 +1054,35 @@ def start_jira_sync(
             ),
         )
 
+    # Defense in depth for Foreman Story requests carrying dataset context.
+    # Legacy integrations without dataset_id retain their existing contract.
+    dataset_stories = [issue for issue in request.issues if str(issue.get("issue_type", "")).lower() == "story" and issue.get("dataset_id")]
+    if dataset_stories:
+        from backend.main import manager
+        from story_intelligence import Draft, ReviewRequest, review_story
+        for issue in dataset_stories:
+            dataset_id = str(issue["dataset_id"])
+            metadata = manager.read_metadata(dataset_id)
+            if metadata.get("status") != "ready":
+                raise HTTPException(status_code=409, detail="Dataset unavailable for duplicate recheck")
+            peers = [Draft(id=str(other.get("nodeId", "")), title=str(other.get("summary", "")),
+                           description=str(other.get("description", "")),
+                           acceptance_criteria="\n".join(other.get("acceptance_criteria") or []),
+                           type=str(other.get("issue_type", "Story")))
+                     for other in request.issues if other is not issue and other.get("summary")]
+            peers.extend(Draft.model_validate(item) for item in issue.get("local_drafts", [])[:5000])
+            draft = Draft(id=str(issue.get("nodeId", "")), title=str(issue.get("summary", "")),
+                          description=str(issue.get("description", "")),
+                          acceptance_criteria="\n".join(issue.get("acceptance_criteria") or []))
+            try:
+                result = review_story(manager.paths(dataset_id)["excel"], ReviewRequest(story=draft, local_drafts=peers))
+            except Exception as exc:
+                raise HTTPException(status_code=409, detail=f"Duplicate recheck unavailable: {str(exc)[:160]}") from exc
+            if result["decision"] == "equivalent":
+                raise HTTPException(status_code=409, detail=f"Equivalent Story exists: {', '.join(m['id'] for m in result['matches'] if m['decision'] == 'equivalent')}")
+            if result["decision"] == "needs_review" and len(str(issue.get("duplicate_override_reason") or "").strip()) < 12:
+                raise HTTPException(status_code=409, detail="Similar Story needs a documented distinct-scope decision before Jira creation")
+
     job_id = create_job()
 
     # Jira API execution happens separately so that

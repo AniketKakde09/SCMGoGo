@@ -259,3 +259,10 @@ export async function exportPlanningExcel(tickets) {
   }
   return response.blob();
 }
+
+// Full-original-backlog semantic review; read-only until user approves a local draft.
+export function reviewStory(datasetId, payload) {
+  return request(`/api/planning/stories/datasets/${encodeURIComponent(datasetId)}/review`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+}
