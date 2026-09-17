@@ -22,6 +22,7 @@ from search import ForemanSearch
 from forecast import generate_forecast
 from canvas import build_canvas_graph
 from jira_sync import router as jira_router
+from smart_sprint import router as smart_sprint_router
 from security import sanitize_response_payload, sanitize_text, security_status
 from sad_workflow import extract_document, generate_proposal, MAX_BYTES
 
@@ -46,6 +47,7 @@ app.add_middleware(
 
 # Jira sync endpoints (/api/jira/health, /api/jira/sync, /api/jira/sync/{job_id}/events)
 app.include_router(jira_router)
+app.include_router(smart_sprint_router)
 
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1)
