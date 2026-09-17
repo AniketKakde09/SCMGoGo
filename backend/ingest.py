@@ -42,6 +42,7 @@ def sanitize_workbook(source_path: Path | str, destination_path: Path | str) -> 
     source_path = Path(source_path)
     destination_path = Path(destination_path)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
+    import pandas as pd
     sheets = pd.read_excel(source_path, sheet_name=None)
     sanitized = {name: sanitize_dataframe(df) for name, df in sheets.items()}
     with pd.ExcelWriter(destination_path, engine="openpyxl") as writer:
