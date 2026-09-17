@@ -151,7 +151,7 @@ function UploadDataset() {
         <div className="auth-header">
 
           <div className="auth-logo">
-            FK
+            GOGO
           </div>
 
           <div className="auth-badge">
@@ -159,13 +159,12 @@ function UploadDataset() {
           </div>
 
           <h1 className="auth-title">
-            Upload your knowledge base
+            Upload your dataset base
           </h1>
 
           <p className="auth-subtitle">
             Upload the Excel workbook (Teams, TeamMembers, Sprints,
-            Holidays, Backlog, Dependencies, SAD_Sections) — Foreman
-            will embed it into ChromaDB and build the dependency graph.
+            Holidays, Backlog, Dependencies, SAD_Sections)
           </p>
 
         </div>
@@ -186,10 +185,6 @@ function UploadDataset() {
               <li>
                 Each upload gets its own isolated Chroma collection and
                 dependency graph, so you can keep multiple datasets.
-              </li>
-              <li>
-                Ingestion runs in the background — this page will show
-                live status until it's ready.
               </li>
             </ul>
           </div>

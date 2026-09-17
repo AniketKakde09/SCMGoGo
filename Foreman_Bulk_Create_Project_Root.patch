@@ -1,0 +1,261 @@
+--- a/Frontend/src/pages/PlanningPlayground.jsx
++++ b/Frontend/src/pages/PlanningPlayground.jsx
+@@ -8,9 +8,9 @@
+ import "./PlanningPlayground.css";
+ import { getCanvasGraph, runIntake, startJiraSync, watchJiraSync } from "../services/api";
+ 
+-const TYPES = ["Epic", "Feature", "Story", "Task", "Note"];
+-const TYPE_CLASS = { Epic: "epic", Feature: "feature", Story: "story", Task: "task", Note: "note" };
+-const PARENT_TYPE = { Feature: "Epic", Story: "Feature", Task: "Feature" };
++const TYPES = ["Epic", "Feature", "Story", "Task", "Sub-task", "Note"];
++const TYPE_CLASS = { Epic: "epic", Feature: "feature", Story: "story", Task: "task", "Sub-task": "task", Note: "note" };
++const PARENT_TYPE = { Feature: "Epic", Story: "Feature", Task: "Feature", "Sub-task": "Story" };
+ const OPTION_GROUPS = [
+   { key: "Existing", label: "Existing from dataset" },
+   { key: "Draft", label: "New on this canvas" },
+@@ -22,7 +22,7 @@
+ function WorkNode({ data, selected }) {
+   return <div className={`pg-node pg-node-${TYPE_CLASS[data.type] || "note"} ${selected ? "is-selected" : ""}`}>
+     <Handle type="target" position={Position.Left} />
+-    <div className="pg-node-top"><span className="pg-node-type">{data.type}</span><span className={`pg-state ${data.jiraKey ? "created" : data.analysis ? "review" : "draft"}`}>{data.jiraKey ? data.jiraKey : data.analysis ? "Reviewed" : "Draft"}</span></div>
++    <div className="pg-node-top"><span className="pg-node-type">{data.type}</span><span className={`pg-state ${data.jiraKey ? "created" : data.analysis ? "review" : "draft"}`}>{data.jiraKey ? `✓ ${data.jiraKey}` : data.publishStatus === "syncing" ? "◌ Creating" : data.publishStatus === "failed" ? "✕ Failed" : data.analysis ? "Reviewed" : "Draft"}</span></div>
+     <strong>{data.title || "Untitled work item"}</strong>
+     {data.parentTitle ? <small>↳ {data.parentTitle}</small> : data.sprint ? <small>{data.sprint}</small> : <small>Unscheduled</small>}
+     {data.duplicate?.ticket_id ? <span className="pg-node-warning">⚠ Similar: {data.duplicate.ticket_id}</span> : null}
+@@ -44,6 +44,7 @@
+   const [datasetGraph, setDatasetGraph] = useState(null);
+   const [analysisBusy, setAnalysisBusy] = useState(false);
+   const [publishBusy, setPublishBusy] = useState(false);
++  const [publishProgress, setPublishProgress] = useState(null);
+   const [notice, setNotice] = useState("");
+   const [relationMode, setRelationMode] = useState("Auto");
+   const datasetId = location.state?.datasetId || localStorage.getItem("foremanDatasetId") || "";
+@@ -158,43 +159,83 @@
+     finally { setAnalysisBusy(false); }
+   }, [datasetGraph, datasetId, selectedNode, updateSelected]);
+ 
+-  const publishSelected = async () => {
+-    if (!selectedNode || selectedNode.data.type === "Note") return;
+-    if (!selectedNode.data.title?.trim()) { setNotice("Add a title before creating a Jira ticket."); return; }
+-    if (selectedNode.data.jiraKey) return;
+-    setPublishBusy(true); setNotice("Creating Jira ticket…");
+-    const data = selectedNode.data;
+-    const issue = {
+-      nodeId:selectedNode.id, issue_type:data.type, summary:data.title, description:[data.description, data.parentTitle ? `Planning hierarchy: ${PARENT_TYPE[data.type] || "Parent"}: ${data.parentTitle}` : ""].filter(Boolean).join("\n\n"),
+-      priority:data.priority || "Medium", story_points:data.points || undefined, sprint:data.sprint || undefined,
+-      acceptance_criteria:(data.acceptanceCriteria || "").split("\n").map((x) => x.replace(/^[-•]\s*/, "").trim()).filter(Boolean),
++  // Only Playground drafts are published. Synthetic workbook IDs are never Jira keys.
++  const publishAll = async (onlySelected = false) => {
++    if (publishBusy) return;
++    const eligible = nodes.filter((n) => n.data.type !== "Note" && !n.data.jiraKey && (!onlySelected || n.id === selectedId));
++    if (!eligible.length) { setNotice("No unpublished tickets to create."); return; }
++    const byId = new Map(nodes.map((n) => [n.id, n]));
++    const rank = { Epic: 0, Feature: 1, Story: 2, Task: 3, "Sub-task": 4 };
++    const issues = eligible.map((node) => {
++      const d = node.data;
++      const parent = byId.get(d.parentId);
++      const epic = d.type === "Feature" ? parent : d.type === "Story" || d.type === "Task" ? byId.get(parent?.data.parentId) : d.type === "Sub-task" ? byId.get(byId.get(parent?.data.parentId)?.data.parentId) : null;
++      const description = [d.description, d.parentTitle ? `Planning hierarchy: ${d.parentTitle}` : ""].filter(Boolean).join("\n\n");
++      return {
++        nodeId: node.id, issue_type: d.type, summary: d.title.trim(), description,
++        priority: d.priority || "Medium", story_points: d.points || undefined,
++        sprint: d.sprint || undefined,
++        acceptance_criteria: (d.acceptanceCriteria || "").split("\n").map((v) => v.replace(/^[-•]\s*/, "").trim()).filter(Boolean),
++        // Draft node IDs are resolved by the backend after parent creation.
++        ...(epic?.data.type === "Epic" ? { epic_link: epic.data.jiraKey || undefined, epic_node_id: epic.data.jiraKey ? undefined : epic.id } : {}),
++        ...(d.type === "Sub-task" && parent?.data.type === "Story" ? { parent: parent.data.jiraKey || parent.id } : {}),
++        ...(d.type === "Story" && parent?.data.type === "Feature" ? { feature_node_id: parent.data.jiraKey ? undefined : parent.id } : {}),
++        ...(d.type === "Feature" && parent?.data.type === "Epic" ? { epic_node_id: parent.data.jiraKey ? undefined : parent.id } : {}),
++        ...(d.type === "Task" && parent?.data.type === "Feature" ? { feature_node_id: parent.data.jiraKey ? undefined : parent.id } : {}),
++      };
++    });
++    const invalid = eligible.filter((n) => !n.data.title?.trim() || (PARENT_TYPE[n.data.type] && !n.data.parentId));
++    if (invalid.length) { setNotice(`Resolve title/parent placement before publishing: ${invalid.map((n) => n.data.title || n.id).join(", ")}`); return; }
++    const orphanDrafts = eligible.filter((n) => {
++      const parent = byId.get(n.data.parentId);
++      return parent && !parent.data.jiraKey && !eligible.some((item) => item.id === parent.id);
++    });
++    if (orphanDrafts.length) { setNotice("Publish the unpublished parent together with its children. Use Create all tickets."); return; }
++    const ordered = issues.sort((a, b) => (rank[a.issue_type] ?? 9) - (rank[b.issue_type] ?? 9));
++    if (!window.confirm(`Create ${ordered.length} ticket(s) in sandbox Jira?\n\nEpic → Feature → Story → Task → Sub-task\n\nExisting dataset tickets will not be created.`)) return;
++    setPublishBusy(true);
++    setPublishProgress({ total: ordered.length, completed: 0, failed: 0, current: "Starting Jira job…" });
++    setNotice("Starting Jira creation…");
++    let closeStream = null;
++    let timeout = null;
++    let finished = false;
++    const finish = (message) => {
++      if (finished) return;
++      finished = true;
++      if (timeout) clearTimeout(timeout);
++      closeStream?.();
++      setPublishBusy(false);
++      setNotice(message);
+     };
+-    // Only send a Jira parent reference when it is a Playground item already created in Jira.
+-    // Dataset TicketIDs are knowledge-base IDs and must not be assumed to be Jira keys.
+-    const parentDraft = nodes.find((n) => n.id === data.parentId);
+-    if (data.type === "Feature" && parentDraft?.data?.type === "Epic" && parentDraft.data.jiraKey) {
+-      issue.epic_link = parentDraft.data.jiraKey;
+-    }
+-    if (data.type === "Story" && parentDraft?.data?.type === "Feature") {
+-      const epicDraft = nodes.find((n) => n.id === parentDraft.data.parentId);
+-      if (epicDraft?.data?.type === "Epic" && epicDraft.data.jiraKey) issue.epic_link = epicDraft.data.jiraKey;
+-    }
+-    if (data.type === "Task" && parentDraft?.data?.type === "Story" && parentDraft.data.jiraKey) {
+-      issue.parent = parentDraft.data.jiraKey;
+-    }
+     try {
+-      const started = await startJiraSync([issue]);
+-      watchJiraSync(started.jobId, {
+-        onEvent:(event) => {
+-          if (event.status === "created" && event.nodeId === selectedNode.id) {
+-            updateNodeById(selectedNode.id, { jiraKey:event.key }); setNotice(`Created ${event.key} in Jira.`);
+-          } else if (event.status === "failed" || event.status === "job_failed") setNotice(event.error || "Jira creation failed.");
+-          else if (event.status === "completed") setPublishBusy(false);
++      const started = await startJiraSync(ordered);
++      if (!started?.jobId) throw new Error("Jira did not return a job ID.");
++      // A stream interruption is an uncertain outcome; never automatically retry writes.
++      timeout = setTimeout(() => finish("Progress timed out. Check Jira before retrying; tickets may have been created."), 180000);
++      closeStream = watchJiraSync(started.jobId, {
++        onEvent: (event) => {
++          if (finished) return;
++          if (event.status === "syncing") {
++            updateNodeById(event.nodeId, { publishStatus: "syncing" });
++            setPublishProgress((prev) => ({ ...prev, current: event.summary || "Creating ticket…" }));
++          } else if (event.status === "created" || event.status === "skipped") {
++            if (event.nodeId && event.key) updateNodeById(event.nodeId, { jiraKey: event.key, publishStatus: "created" });
++            setPublishProgress((prev) => ({ ...prev, completed: prev.completed + 1, current: event.key || event.summary }));
++          } else if (event.status === "failed") {
++            if (event.nodeId) updateNodeById(event.nodeId, { publishStatus: "failed", publishError: event.error });
++            setPublishProgress((prev) => ({ ...prev, failed: prev.failed + 1, current: event.error || "Ticket failed" }));
++          } else if (event.status === "completed") {
++            finish("Jira job completed. Review each ticket's created/failed status below.");
++          } else if (event.status === "job_failed") {
++            finish(event.error || "Jira job failed. Check created tickets before retrying.");
++          }
+         },
+-        onError:() => { setPublishBusy(false); setNotice("Jira progress connection closed. Check Jira before retrying."); },
++        onError: () => finish("Progress connection interrupted. Check Jira before retrying; creation status is uncertain."),
+       });
+-    } catch (error) { setPublishBusy(false); setNotice(error.message || "Could not start Jira creation."); }
++      if (finished) closeStream?.();
++    } catch (error) { finish(error.message || "Could not start Jira creation."); }
+   };
++  const publishSelected = () => publishAll(true);
+ 
+   const deleteSelected = () => { if (!selectedId) return; setNodes((c) => c.filter((n) => n.id !== selectedId)); setEdges((c) => c.filter((e) => e.source !== selectedId && e.target !== selectedId)); setSelectedId(null); };
+   const clearBoard = () => { if (!nodes.length || window.confirm("Clear every item from this planning canvas?")) { setNodes([]); setEdges([]); setSelectedId(null); } };
+@@ -207,8 +248,9 @@
+   const readinessMissing = selectedNode ? [!selectedNode.data.description && "description", ["Story","Task"].includes(selectedNode.data.type) && !selectedNode.data.points && "story points", selectedNode.data.type === "Story" && !selectedNode.data.acceptanceCriteria && "acceptance criteria", PARENT_TYPE[selectedNode.data.type] && !selectedNode.data.parentId && `${PARENT_TYPE[selectedNode.data.type]} placement`].filter(Boolean) : [];
+ 
+   return <div className="pg-shell">
+-    <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
++    <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="pg-bulk-create" disabled={publishBusy || !nodes.some((n) => n.data.type !== "Note" && !n.data.jiraKey)} onClick={() => publishAll(false)}>{publishBusy ? "Creating tickets…" : `Create all tickets (${nodes.filter((n) => n.data.type !== "Note" && !n.data.jiraKey).length})`}</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
+     <div className="pg-toolbar"><select value={newType} onChange={(e)=>setNewType(e.target.value)}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select><input value={title} onChange={(e)=>setTitle(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addNode()} placeholder="Describe a work item…"/><button className="primary" onClick={addNode}>+ Add to canvas</button><span className="pg-link-label">Arrow:</span><select value={relationMode} onChange={(e)=>setRelationMode(e.target.value)} title="Auto maps valid Epic → Feature → Story/Task arrows as hierarchy"><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select><span className="pg-tip">Draw arrows to map hierarchy or dependencies · Draft → Analyze → Review → Create</span></div>
++    {publishProgress && <div className="pg-publish-progress" role="status"><strong>Jira creation · {publishProgress.completed + publishProgress.failed}/{publishProgress.total}</strong><span>{publishProgress.current}</span><progress max={publishProgress.total} value={publishProgress.completed + publishProgress.failed}/>{publishProgress.failed > 0 && <span>{publishProgress.failed} failed · review before retrying</span>}</div>}
+     {notice && <div className="pg-notice">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
+     <main className="pg-main"><section className="pg-canvas">{nodes.length===0&&<div className="pg-empty"><div className="pg-empty-icon">✦</div><h2>Your planning space is empty</h2><p>Add work, arrange it visually, then let Foreman compare drafts with the existing backlog before publishing.</p><div className="pg-empty-hints"><span>Epic → Feature → Story</span><span>Duplicate check</span><span>Dependencies</span><span>Human approval</span></div></div>}
+       <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>setSelectedId(n.id)} onPaneClick={()=>setSelectedId(null)} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding:0.18, minZoom:0.45, maxZoom:1 }} minZoom={.2} maxZoom={1.8} defaultEdgeOptions={{ style:{ strokeWidth:1.7 } }} proOptions={{hideAttribution:true}}><Background variant={BackgroundVariant.Dots} gap={24} size={1}/><MiniMap pannable zoomable/><Controls/></ReactFlow></section>
+@@ -226,7 +268,7 @@
+           {(selectedNode.data.analysis.architecture_areas||[]).length>0&&<div className="pg-suggestions"><span>Architecture context</span>{selectedNode.data.analysis.architecture_areas.slice(0,3).map((a)=><button key={a.sad_section_id} title={a.sad_title}>{a.sad_section_id} · {a.title}</button>)}</div>}</> : <p>Analyze before publishing to surface related work, architecture context and dependency evidence.</p>}
+         </section>}
+         <div className="pg-readiness"><strong>Readiness</strong>{readinessMissing.length ? <span>Needs {readinessMissing.join(", ")}</span> : <span className="ready">Ready for review</span>}</div>
+-        {selectedNode.data.jiraKey ? <div className="pg-created-box">✓ Created in Jira <strong>{selectedNode.data.jiraKey}</strong></div> : selectedNode.data.type==="Note" ? <button className="pg-create" onClick={()=>updateSelected({type:"Task"})}>Convert note to Task</button> : <button className="pg-create" disabled={publishBusy||!selectedNode.data.title?.trim()} onClick={publishSelected}>{publishBusy?"Creating…":"Create ticket in Jira"}</button>}
++        {selectedNode.data.jiraKey ? <div className="pg-created-box">✓ Created in Jira <a href={`${import.meta.env.VITE_JIRA_BASE_URL || "#"}/browse/${encodeURIComponent(selectedNode.data.jiraKey)}`} target="_blank" rel="noopener noreferrer" onClick={(event) => { if (!import.meta.env.VITE_JIRA_BASE_URL) { event.preventDefault(); setNotice("Set VITE_JIRA_BASE_URL in Frontend/.env to enable Jira links."); } }}>{selectedNode.data.jiraKey} ↗</a></div> : selectedNode.data.type==="Note" ? <button className="pg-create" onClick={()=>updateSelected({type:"Task"})}>Convert note to Task</button> : <button className="pg-create" disabled={publishBusy||!selectedNode.data.title?.trim()} onClick={publishSelected}>{publishBusy?"Creating…":"Create ticket in Jira"}</button>}
+         <div className="pg-inspector-note">Creation is always explicit. Existing dataset IDs are used for planning context only and are never assumed to be Jira keys.</div><button className="pg-delete" disabled={Boolean(selectedNode.data.jiraKey)} onClick={deleteSelected}>Delete work item</button>
+       </> : <div className="pg-inspector-empty"><strong>Inspector</strong><p>Select a card to edit it, choose its hierarchy, check for overlap and create it in Jira.</p></div>}</aside></main>
+   </div>;
+--- a/Frontend/src/pages/PlanningPlayground.css
++++ b/Frontend/src/pages/PlanningPlayground.css
+@@ -36,3 +36,6 @@
+ .pg-mapping-help{margin-top:0;background:#fff;border-style:solid}
+ .pg-create{min-height:44px;font-size:13px;box-shadow:0 6px 16px rgba(17,24,39,.12)}
+ @media(max-width:1180px){.pg-inspector.open{width:360px;min-width:360px;max-width:360px}.pg-node{width:220px}}
++
++/* Batch Jira publishing: visible, accessible progress and explicit action. */
++.pg-actions .pg-bulk-create{background:#0066b3;color:#fff;border-color:#0066b3;white-space:nowrap}.pg-actions .pg-bulk-create:disabled{opacity:.55;cursor:not-allowed}.pg-publish-progress{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 22px;background:#eef6ff;border-bottom:1px solid #b9d8f7;color:#003b71;font-size:12px}.pg-publish-progress progress{height:9px;flex:1;min-width:100px;accent-color:#0066b3}.pg-created-box a{font-weight:800;color:#005ca9;text-decoration:underline}.pg-state.created{font-size:10px}
+diff --git a/backend/jira_sync.py b/backend/jira_sync.py
+index abcb2e1..09493f8 100644
+--- a/backend/jira_sync.py
++++ b/backend/jira_sync.py
+@@ -992,6 +992,7 @@ def run_sync(
+         # ====================================================
+ 
+         epics = []
++        features = []
+         stories = []
+         tasks = []
+         other_issues = []
+@@ -1010,6 +1011,9 @@ def run_sync(
+                     issue
+                 )
+ 
++            elif issue_type == "feature":
++                features.append(issue)
++
+             elif issue_type == "story":
+ 
+                 stories.append(
+@@ -1098,6 +1102,21 @@ def run_sync(
+                     summary
+                 ] = jira_key
+ 
++        # Create Features only after their Epics exist. A draft Epic that
++        # failed must never result in an orphaned Feature.
++        feature_by_node_id: Dict[str, str] = {}
++        for feature in features:
++            epic_ref = feature.get("epic_node_id")
++            epic_key = (epic_by_node_id.get(str(epic_ref)) if epic_ref else feature.get("epic_link"))
++            if epic_ref and not epic_key:
++                publish(job_id, {"status": "failed", "nodeId": get_node_id(feature),
++                                 "summary": feature.get("summary"),
++                                 "error": "Epic creation failed; Feature was not created."})
++                continue
++            jira_key = process_issue(job_id, feature, epic_key)
++            if jira_key and get_node_id(feature):
++                feature_by_node_id[get_node_id(feature)] = jira_key
++
+         # ====================================================
+         # 2. Create Stories
+         #
+@@ -1116,6 +1135,20 @@ def run_sync(
+                 )
+             )
+ 
++            epic_ref = story.get("epic_node_id")
++            feature_ref = story.get("feature_node_id")
++            if epic_ref and str(epic_ref) not in epic_by_node_id and not story.get("epic_link"):
++                publish(job_id, {"status": "failed", "nodeId": get_node_id(story),
++                                 "summary": story.get("summary"),
++                                 "error": "Epic creation failed; Story was not created."})
++                continue
++            if feature_ref and str(feature_ref) not in feature_by_node_id:
++                publish(job_id, {"status": "failed", "nodeId": get_node_id(story),
++                                 "summary": story.get("summary"),
++                                 "error": "Feature creation failed; Story was not created."})
++                continue
++            if epic_ref and not epic_key:
++                epic_key = epic_by_node_id.get(str(epic_ref))
+             jira_key = process_issue(
+                 job_id,
+                 story,
+@@ -1166,6 +1199,18 @@ def run_sync(
+                 )
+             )
+ 
++            parent_ref = get_parent_reference(task)
++            if parent_ref and str(parent_ref).startswith("draft-") and not parent_key:
++                publish(job_id, {"status": "failed", "nodeId": get_node_id(task),
++                                 "summary": task.get("summary"),
++                                 "error": "Parent Story was not created; Sub-task was not created."})
++                continue
++            feature_ref = task.get("feature_node_id")
++            if feature_ref and str(feature_ref) not in feature_by_node_id:
++                publish(job_id, {"status": "failed", "nodeId": get_node_id(task),
++                                 "summary": task.get("summary"),
++                                 "error": "Feature creation failed; Task was not created."})
++                continue
+             task_to_create = task
+ 
+             # The current React flow may still send embedded

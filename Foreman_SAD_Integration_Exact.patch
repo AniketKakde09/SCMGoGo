@@ -1,0 +1,1413 @@
+diff --git a/Frontend/src/App.jsx b/Frontend/src/App.jsx
+index 5a923f0..49a9c85 100644
+--- a/Frontend/src/App.jsx
++++ b/Frontend/src/App.jsx
+@@ -5,6 +5,7 @@ import Start from "./pages/Start";
+ import UploadDataset from "./pages/UploadDataset";
+ import Canvas from "./pages/Canvas";
+ import PlanningPlayground from "./pages/PlanningPlayground";
++import SADIntake from "./pages/SADIntake";
+ import ForecastReportRoute from "./pages/ForecastReportRoute";
+ import WorkspaceShell from "./components/WorkspaceShell";
+ 
+@@ -19,6 +20,7 @@ function App() {
+           <Route path="/report" element={<ForecastReportRoute />} />
+           <Route path="/canvas" element={<Canvas />} />
+           <Route path="/playground" element={<PlanningPlayground />} />
++          <Route path="/sad" element={<SADIntake />} />
+         </Route>
+         <Route path="*" element={<Navigate to="/start" replace />} />
+       </Routes>
+diff --git a/Frontend/src/components/WorkspaceShell.jsx b/Frontend/src/components/WorkspaceShell.jsx
+index 006228e..9422358 100644
+--- a/Frontend/src/components/WorkspaceShell.jsx
++++ b/Frontend/src/components/WorkspaceShell.jsx
+@@ -7,6 +7,7 @@ const NAV = [
+   { to: "/start", icon: "⌂", label: "Overview", description: "Workspace home" },
+   { to: "/upload", icon: "▤", label: "Knowledge base", description: "Upload & connect" },
+   { to: "/canvas", icon: "◇", label: "Delivery Canvas", description: "Explore work" },
++  { to: "/sad", icon: "▤", label: "Add SAD", description: "Generate architecture backlog" },
+   { to: "/playground", icon: "▧", label: "Planning studio", description: "Review & publish" },
+   { to: "/report", icon: "▥", label: "Forecast", description: "Capacity & delivery" },
+ ];
+@@ -14,6 +15,7 @@ const PAGE = {
+   "/start": ["Overview", "Your delivery intelligence workspace"],
+   "/upload": ["Knowledge base", "Connect the synthetic delivery dataset"],
+   "/canvas": ["Delivery Canvas", "Explore your backlog and architecture"],
++  "/sad": ["Add SAD", "Generate traceable work and review overlaps"],
+   "/playground": ["Planning studio", "Human-owned changes and review"],
+   "/report": ["Forecast", "Capacity, velocity and delivery outlook"],
+ };
+diff --git a/Frontend/src/pages/PlanningPlayground.jsx b/Frontend/src/pages/PlanningPlayground.jsx
+index 20d2a97..c8474b1 100644
+--- a/Frontend/src/pages/PlanningPlayground.jsx
++++ b/Frontend/src/pages/PlanningPlayground.jsx
+@@ -1,277 +1,310 @@
+-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+-import { useLocation, useNavigate } from "react-router-dom";
+-import {
+-  ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Controls, MiniMap,
+-  Handle, Position, addEdge, useEdgesState, useNodesState, MarkerType,
+-} from "@xyflow/react";
+-import "@xyflow/react/dist/style.css";
+-import "./PlanningPlayground.css";
+-import { getCanvasGraph, runIntake, startJiraSync, watchJiraSync } from "../services/api";
+-
+-const TYPES = ["Epic", "Feature", "Story", "Task", "Note"];
+-const TYPE_CLASS = { Epic: "epic", Feature: "feature", Story: "story", Task: "task", Note: "note" };
+-const PARENT_TYPE = { Feature: "Epic", Story: "Feature", Task: "Feature" };
+-const OPTION_GROUPS = [
+-  { key: "Existing", label: "Existing from dataset" },
+-  { key: "Draft", label: "New on this canvas" },
+-  { key: "Created", label: "Created from this canvas" },
+-];
+-const DUPLICATE_HIGH = 0.22;
+-const DUPLICATE_POSSIBLE = 0.36;
+-
+-function WorkNode({ data, selected }) {
+-  return <div className={`pg-node pg-node-${TYPE_CLASS[data.type] || "note"} ${selected ? "is-selected" : ""}`}>
+-    <Handle type="target" position={Position.Left} />
+-    <div className="pg-node-top"><span className="pg-node-type">{data.type}</span><span className={`pg-state ${data.jiraKey ? "created" : data.analysis ? "review" : "draft"}`}>{data.jiraKey ? data.jiraKey : data.analysis ? "Reviewed" : "Draft"}</span></div>
+-    <strong>{data.title || "Untitled work item"}</strong>
+-    {data.parentTitle ? <small>↳ {data.parentTitle}</small> : data.sprint ? <small>{data.sprint}</small> : <small>Unscheduled</small>}
+-    {data.duplicate?.ticket_id ? <span className="pg-node-warning">⚠ Similar: {data.duplicate.ticket_id}</span> : null}
+-    <Handle type="source" position={Position.Right} />
+-  </div>;
+-}
+-const nodeTypes = { work: WorkNode };
+-const norm = (v) => String(v || "").trim().toLowerCase();
+-const asDistance = (v) => Number.isFinite(Number(v)) ? Number(v) : null;
+-
+-function PlaygroundInner() {
+-  const navigate = useNavigate();
+-  const location = useLocation();
+-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+-  const [selectedId, setSelectedId] = useState(null);
+-  const [newType, setNewType] = useState("Story");
+-  const [title, setTitle] = useState("");
+-  const [datasetGraph, setDatasetGraph] = useState(null);
+-  const [analysisBusy, setAnalysisBusy] = useState(false);
+-  const [publishBusy, setPublishBusy] = useState(false);
+-  const publishCleanup = useRef(null);
+-  useEffect(() => () => publishCleanup.current?.(), []);
+-  const [notice, setNotice] = useState("");
+-  const [relationMode, setRelationMode] = useState("Auto");
+-  const datasetId = location.state?.datasetId || localStorage.getItem("foremanDatasetId") || "";
+-
+-  const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
+-
+-  useEffect(() => {
+-    if (!datasetId) return;
+-    getCanvasGraph(datasetId).then(setDatasetGraph).catch(() => setDatasetGraph(null));
+-  }, [datasetId]);
+-
+-  useEffect(() => {
+-    const context = location.state?.contextItem;
+-    if (!context?.id) return;
+-    setNotice(`Planning with context: ${context.title || context.summary || context.id}. Existing dataset work stays read-only; add a draft to propose changes.`);
+-  }, [location.state]);
+-
+-  const existingByType = useMemo(() => {
+-    const all = [...(datasetGraph?.epics || []), ...(datasetGraph?.issues || [])];
+-    return TYPES.reduce((acc, type) => {
+-      acc[type] = all.filter((x) => norm(x.type) === norm(type)).sort((a,b) => String(a.title).localeCompare(String(b.title)));
+-      return acc;
+-    }, {});
+-  }, [datasetGraph]);
+-
+-  const parentOptions = useMemo(() => {
+-    if (!selectedNode) return [];
+-    const required = PARENT_TYPE[selectedNode.data.type];
+-    if (!required) return [];
+-    const existing = (existingByType[required] || []).map((x) => ({ id:x.id, title:x.title, source:"Existing", item:x }));
+-    const drafts = nodes.filter((n) => n.id !== selectedId && n.data.type === required).map((n) => ({ id:n.id, title:n.data.title, source:n.data.jiraKey ? "Created" : "Draft", item:n.data }));
+-    return [...existing, ...drafts];
+-  }, [existingByType, nodes, selectedId, selectedNode]);
+-
+-  const addNode = useCallback(() => {
+-    const cleanTitle = title.trim() || `New ${newType}`;
+-    const id = `draft-${Date.now()}`;
+-    const index = nodes.length;
+-    setNodes((current) => [...current, { id, type:"work", position:{ x:120+(index%4)*280, y:120+Math.floor(index/4)*180 }, data:{ type:newType, title:cleanTitle, points:"", sprint:"", description:"", acceptanceCriteria:"", priority:"Medium", parentId:"", parentTitle:"", analysis:null, duplicate:null, jiraKey:"" } }]);
+-    setSelectedId(id); setTitle("");
+-  }, [newType, nodes.length, setNodes, title]);
+-
+-  const updateNodeById = useCallback((nodeId, patch) => {
+-    if (!nodeId) return;
+-    setNodes((current) => current.map((n) => n.id === nodeId ? { ...n, data:{ ...n.data, ...patch, ...(Object.keys(patch).some((k) => ["title","description","type"].includes(k)) ? { analysis:null, duplicate:null, suggestedParentId:"" } : {}) } } : n));
+-  }, [setNodes]);
+-  const updateSelected = useCallback((patch) => updateNodeById(selectedId, patch), [selectedId, updateNodeById]);
+-
+-  const onConnect = useCallback((params) => {
+-    const sourceNode = nodes.find((node) => node.id === params.source);
+-    const targetNode = nodes.find((node) => node.id === params.target);
+-    if (!sourceNode || !targetNode || sourceNode.id === targetNode.id) return;
+-
+-    const validHierarchy = PARENT_TYPE[targetNode.data.type] === sourceNode.data.type;
+-    const useHierarchy = relationMode === "Hierarchy" || (relationMode === "Auto" && validHierarchy);
+-
+-    if (useHierarchy) {
+-      if (!validHierarchy) {
+-        setNotice(`Invalid hierarchy: ${sourceNode.data.type} cannot be the parent of ${targetNode.data.type}. Use Epic → Feature → Story/Task.`);
+-        return;
+-      }
+-      const parentTitle = sourceNode.data.title || sourceNode.id;
+-      updateNodeById(targetNode.id, { parentId: sourceNode.id, parentTitle, parentSource: sourceNode.data.jiraKey ? "Created" : "Draft" });
+-      setEdges((current) => {
+-        const withoutOldParent = current.filter((edge) => !(edge.data?.kind === "hierarchy" && edge.target === targetNode.id));
+-        return addEdge({ ...params, id:`parent-${sourceNode.id}-${targetNode.id}`, label:"parent", data:{kind:"hierarchy"}, markerEnd:{type:MarkerType.ArrowClosed} }, withoutOldParent);
+-      });
+-      return;
+-    }
+-
+-    const relation = relationMode === "Auto" ? "Relates" : relationMode;
+-    setEdges((current) => addEdge({ ...params, id:`${relation.toLowerCase()}-${params.source}-${params.target}-${Date.now()}`, markerEnd:{ type:MarkerType.ArrowClosed }, label:relation.toLowerCase(), data:{ kind:"dependency", relation } }, current));
+-  }, [nodes, relationMode, setEdges, updateNodeById]);
+-  const setParent = (parentId) => {
+-    const option = parentOptions.find((x) => x.id === parentId);
+-    updateSelected({ parentId, parentTitle: option?.title || "", parentSource: option?.source || "" });
+-    setEdges((current) => {
+-      const withoutHierarchy = current.filter((e) => !(e.data?.kind === "hierarchy" && e.target === selectedId));
+-      if (!parentId || !nodes.some((n) => n.id === parentId)) return withoutHierarchy;
+-      return addEdge({ id:`parent-${parentId}-${selectedId}`, source:parentId, target:selectedId, label:"contains", data:{kind:"hierarchy"}, markerEnd:{type:MarkerType.ArrowClosed} }, withoutHierarchy);
+-    });
+-  };
+-
+-  const analyzeSelected = useCallback(async () => {
+-    if (!selectedNode || selectedNode.data.type === "Note") return;
+-    if (!datasetId) { setNotice("Connect a dataset to compare this draft with the existing backlog."); return; }
+-    const text = [selectedNode.data.title, selectedNode.data.description, selectedNode.data.acceptanceCriteria].filter(Boolean).join("\n");
+-    if (!text.trim()) return;
+-    setAnalysisBusy(true); setNotice("");
+-    try {
+-      const result = await runIntake(datasetId, text, 8);
+-      const candidates = (result.overlap_candidates || []).filter((c) => c.ticket_id).sort((a,b) => (asDistance(a.distance) ?? 99) - (asDistance(b.distance) ?? 99));
+-      const best = candidates[0] || null;
+-      const duplicate = best && asDistance(best.distance) !== null && asDistance(best.distance) <= DUPLICATE_POSSIBLE ? best : null;
+-
+-      // Suggest the hierarchy from the closest grounded backlog item, but never
+-      // change the user's parent automatically. ParentID remains authoritative.
+-      let suggestedParentId = "";
+-      const allExisting = [...(datasetGraph?.epics || []), ...(datasetGraph?.issues || [])];
+-      const byId = new Map(allExisting.map((item) => [String(item.id), item]));
+-      let cursor = best?.ticket_id ? byId.get(String(best.ticket_id)) : null;
+-      const requiredParentType = PARENT_TYPE[selectedNode.data.type];
+-      if (cursor && requiredParentType) {
+-        if (norm(cursor.type) === norm(requiredParentType)) suggestedParentId = cursor.id;
+-        while (!suggestedParentId && cursor?.parent_id) {
+-          cursor = byId.get(String(cursor.parent_id));
+-          if (cursor && norm(cursor.type) === norm(requiredParentType)) suggestedParentId = cursor.id;
+-        }
+-      }
+-      updateSelected({ analysis:result, duplicate, suggestedParentId });
+-    } catch (error) { setNotice(error.message || "Foreman analysis failed."); }
+-    finally { setAnalysisBusy(false); }
+-  }, [datasetGraph, datasetId, selectedNode, updateSelected]);
+-
+-  const publishSelected = async () => {
+-    if (!selectedNode || selectedNode.data.type === "Note" || publishBusy || selectedNode.data.jiraKey) return;
+-    const data = selectedNode.data;
+-    const missing = [
+-      !data.title?.trim() && "title",
+-      !data.description?.trim() && "description",
+-      ["Story", "Task"].includes(data.type) && !(Number(data.points) > 0) && "positive story points",
+-      data.type === "Story" && !data.acceptanceCriteria?.trim() && "acceptance criteria",
+-      PARENT_TYPE[data.type] && !data.parentId && `${PARENT_TYPE[data.type]} placement`,
+-    ].filter(Boolean);
+-    if (missing.length) { setNotice(`Complete before publishing: ${missing.join(", ")}.`); return; }
+-    if (data.duplicate?.ticket_id && !window.confirm(`Potential overlap with ${data.duplicate.ticket_id}. Have you reviewed it and confirmed this is genuinely new work?`)) return;
+-    if (!window.confirm(`Publish "${data.title}" to sandbox Jira? This creates a real ticket.`)) return;
+-    setPublishBusy(true);
+-    setNotice("Starting Jira creation…");
+-    const nodeId = selectedNode.id;
+-    const issue = {
+-      nodeId, issue_type:data.type, summary:data.title,
+-      description:[data.description, data.parentTitle ? `Planning hierarchy: ${PARENT_TYPE[data.type] || "Parent"}: ${data.parentTitle}` : ""].filter(Boolean).join("\n\n"),
+-      priority:data.priority || "Medium", story_points:data.points || undefined, sprint:data.sprint || undefined,
+-      acceptance_criteria:(data.acceptanceCriteria || "").split("\n").map((x) => x.replace(/^[-•]\s*/, "").trim()).filter(Boolean),
+-    };
+-    const parentDraft = nodes.find((n) => n.id === data.parentId);
+-    if (data.type === "Feature" && parentDraft?.data?.type === "Epic" && parentDraft.data.jiraKey) issue.epic_link = parentDraft.data.jiraKey;
+-    if (data.type === "Story" && parentDraft?.data?.type === "Feature") {
+-      const epicDraft = nodes.find((n) => n.id === parentDraft.data.parentId);
+-      if (epicDraft?.data?.type === "Epic" && epicDraft.data.jiraKey) issue.epic_link = epicDraft.data.jiraKey;
+-    }
+-    if (data.type === "Task" && parentDraft?.data?.type === "Story" && parentDraft.data.jiraKey) issue.parent = parentDraft.data.jiraKey;
+-    try {
+-      const started = await startJiraSync([issue]);
+-      if (!started?.jobId) throw new Error("Jira did not return a job ID.");
+-      let finished = false;
+-      let createdKey = "";
+-      let closeStream = () => {};
+-      const timeout = window.setTimeout(() => {
+-        if (finished) return;
+-        finished = true;
+-        closeStream();
+-        setPublishBusy(false);
+-        setNotice(`Jira job ${started.jobId} has not reported a final result. Check Jira before retrying to avoid duplicate tickets.`);
+-      }, 90000);
+-      const finish = (message) => {
+-        if (finished) return;
+-        finished = true;
+-        window.clearTimeout(timeout);
+-        closeStream();
+-        publishCleanup.current = null;
+-        setPublishBusy(false);
+-        setNotice(message);
+-      };
+-      closeStream = watchJiraSync(started.jobId, {
+-        onEvent:(event) => {
+-          if (finished) return;
+-          if (event.status === "created" && event.nodeId === nodeId && event.key) {
+-            createdKey = event.key;
+-            updateNodeById(nodeId, { jiraKey:event.key });
+-            setNotice(`Created ${event.key} in Jira; waiting for job completion…`);
+-          } else if (event.status === "failed" && (!event.nodeId || event.nodeId === nodeId)) {
+-            finish(event.error || "Jira creation failed.");
+-          } else if (event.status === "job_failed") {
+-            finish(event.error || "Jira job failed. Check Jira before retrying.");
+-          } else if (event.status === "completed") {
+-            finish(createdKey ? `Created ${createdKey} in Jira.` : `Job ${started.jobId} completed without a ticket key. Check Jira before retrying.`);
+-          }
+-        },
+-        onError:() => finish(`Jira progress disconnected for job ${started.jobId}. Check Jira before retrying; creation may have succeeded.`),
+-      });
+-      if (finished) closeStream();
+-      else publishCleanup.current = () => { window.clearTimeout(timeout); closeStream(); };
+-    } catch (error) {
+-      publishCleanup.current?.();
+-      publishCleanup.current = null;
+-      setPublishBusy(false);
+-      setNotice(error.message || "Could not start Jira creation.");
+-    }
+-  };
+-
+-  const deleteSelected = () => { if (!selectedId) return; setNodes((c) => c.filter((n) => n.id !== selectedId)); setEdges((c) => c.filter((e) => e.source !== selectedId && e.target !== selectedId)); setSelectedId(null); };
+-  const clearBoard = () => { if (!nodes.length || window.confirm("Clear every item from this planning canvas?")) { setNodes([]); setEdges([]); setSelectedId(null); } };
+-  const draftKey = `foremanPlanningPlayground:${datasetId || "no-dataset"}`;
+-  const saveBoard = () => { try { localStorage.setItem(draftKey, JSON.stringify({ nodes, edges, savedAt:new Date().toISOString() })); setNotice("Draft saved for this dataset."); } catch { setNotice("Unable to save draft: browser storage may be full."); } };
+-  const restoreBoard = () => { try { const saved=JSON.parse(localStorage.getItem(draftKey)||"null"); if(saved?.nodes)setNodes(saved.nodes); if(saved?.edges)setEdges(saved.edges); } catch {} };
+-
+-  const duplicate = selectedNode?.data?.duplicate;
+-  const distance = asDistance(duplicate?.distance);
+-  const duplicateLevel = distance !== null && distance <= DUPLICATE_HIGH ? "High overlap" : "Possible overlap";
+-  const readinessMissing = selectedNode ? [!selectedNode.data.description && "description", ["Story","Task"].includes(selectedNode.data.type) && !selectedNode.data.points && "story points", selectedNode.data.type === "Story" && !selectedNode.data.acceptanceCriteria && "acceptance criteria", PARENT_TYPE[selectedNode.data.type] && !selectedNode.data.parentId && `${PARENT_TYPE[selectedNode.data.type]} placement`].filter(Boolean) : [];
+-
+-  return <div className="pg-shell">
+-    <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
+-    <div className="pg-toolbar"><select value={newType} onChange={(e)=>setNewType(e.target.value)}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select><input value={title} onChange={(e)=>setTitle(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addNode()} placeholder="Describe a work item…"/><button className="primary" onClick={addNode}>+ Add to canvas</button><span className="pg-link-label">Arrow:</span><select value={relationMode} onChange={(e)=>setRelationMode(e.target.value)} title="Auto maps valid Epic → Feature → Story/Task arrows as hierarchy"><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select><span className="pg-tip">Draw arrows to map hierarchy or dependencies · Draft → Analyze → Review → Create</span></div>
+-    {notice && <div className="pg-notice">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
+-    <main className="pg-main"><section className="pg-canvas">{nodes.length===0&&<div className="pg-empty"><div className="pg-empty-icon">✦</div><h2>Your planning space is empty</h2><p>Add work, arrange it visually, then let Foreman compare drafts with the existing backlog before publishing.</p><div className="pg-empty-hints"><span>Epic → Feature → Story</span><span>Duplicate check</span><span>Dependencies</span><span>Human approval</span></div></div>}
+-      <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>setSelectedId(n.id)} onPaneClick={()=>setSelectedId(null)} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding:0.18, minZoom:0.45, maxZoom:1 }} minZoom={.2} maxZoom={1.8} defaultEdgeOptions={{ style:{ strokeWidth:1.7 } }} proOptions={{hideAttribution:true}}><Background variant={BackgroundVariant.Dots} gap={24} size={1}/><MiniMap pannable zoomable/><Controls/></ReactFlow></section>
+-      <aside className={`pg-inspector ${selectedNode?"open":""}`}>{selectedNode ? <>
+-        <div className="pg-inspector-head"><div><span>{selectedNode.data.jiraKey ? "Created ticket" : "Draft work item"}</span><strong>{selectedNode.data.type}</strong></div><button onClick={()=>setSelectedId(null)}>×</button></div>
+-        <label>Type<select value={selectedNode.data.type} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>updateSelected({type:e.target.value,parentId:"",parentTitle:""})}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select></label>
+-        <label>Title<input value={selectedNode.data.title||""} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>updateSelected({title:e.target.value})}/></label>
+-        {PARENT_TYPE[selectedNode.data.type] && <label className="pg-parent-field"><span className="pg-label-row"><span>{PARENT_TYPE[selectedNode.data.type]} placement</span><span className="pg-option-count">{parentOptions.length} available</span></span><select className="pg-parent-select" value={selectedNode.data.parentId||""} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>setParent(e.target.value)}><option value="">Choose {PARENT_TYPE[selectedNode.data.type]}…</option>{OPTION_GROUPS.map((group)=>{const opts=parentOptions.filter((x)=>x.source===group.key);return opts.length?<optgroup key={group.key} label={`${group.label} (${opts.length})`}>{opts.map((x)=><option key={`${group.key}-${x.id}`} value={x.id}>{x.title} · {x.id}</option>)}</optgroup>:null;})}</select><small className="pg-field-help">Existing {PARENT_TYPE[selectedNode.data.type]}s from the connected dataset and newly created {PARENT_TYPE[selectedNode.data.type]}s on this canvas are suggested together.</small>{selectedNode.data.suggestedParentId && selectedNode.data.suggestedParentId !== selectedNode.data.parentId ? <button type="button" className="pg-parent-suggestion" onClick={()=>setParent(selectedNode.data.suggestedParentId)}>✦ Foreman suggests {parentOptions.find((x)=>x.id===selectedNode.data.suggestedParentId)?.title || selectedNode.data.suggestedParentId}</button> : null}</label>}
+-        <div className="pg-mapping-help">Tip: you can also map this item by drawing an arrow from its parent card. Valid hierarchy is Epic → Feature → Story/Task.</div><div className="pg-two"><label>Story points<input type="number" min="0" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.points||""} onChange={(e)=>updateSelected({points:e.target.value})}/></label><label>Priority<select disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.priority||"Medium"} onChange={(e)=>updateSelected({priority:e.target.value})}><option>Highest</option><option>High</option><option>Medium</option><option>Low</option><option>Lowest</option></select></label></div>
+-        <label>Sprint<input value={selectedNode.data.sprint||""} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>updateSelected({sprint:e.target.value})} placeholder="Jira sprint ID"/></label>
+-        <label>Description<textarea rows="4" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.description||""} onChange={(e)=>updateSelected({description:e.target.value})} placeholder="What is needed and why?"/></label>
+-        {selectedNode.data.type==="Story" && <label>Acceptance criteria<textarea rows="4" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.acceptanceCriteria||""} onChange={(e)=>updateSelected({acceptanceCriteria:e.target.value})} placeholder="One criterion per line…"/></label>}
+-        {selectedNode.data.type!=="Note" && <section className="pg-ai-card"><div className="pg-ai-head"><div><span className="pg-spark">✦</span><strong>Foreman review</strong></div><button onClick={analyzeSelected} disabled={analysisBusy||Boolean(selectedNode.data.jiraKey)}>{analysisBusy?"Checking…":selectedNode.data.analysis?"Check again":"Analyze"}</button></div>
+-          {!datasetId ? <p>Connect a dataset to check this draft against existing work.</p> : selectedNode.data.analysis ? <>{duplicate ? <div className="pg-duplicate"><div><strong>{duplicateLevel}</strong><span>{distance!==null?`distance ${distance.toFixed(3)}`:"semantic candidate"}</span></div><b>{duplicate.ticket_id}</b><p>{duplicate.title}</p><div className="pg-dup-actions"><button onClick={()=>updateSelected({duplicate:null})}>Not duplicate</button><button onClick={()=>navigate("/canvas",{state:{datasetId}})}>View existing</button></div></div> : <div className="pg-clear-check">✓ No high-confidence overlap was flagged by the current review threshold.</div>}
+-          {(selectedNode.data.analysis.architecture_areas||[]).length>0&&<div className="pg-suggestions"><span>Architecture context</span>{selectedNode.data.analysis.architecture_areas.slice(0,3).map((a)=><button key={a.sad_section_id} title={a.sad_title}>{a.sad_section_id} · {a.title}</button>)}</div>}</> : <p>Analyze before publishing to surface related work, architecture context and dependency evidence.</p>}
+-        </section>}
+-        <div className="pg-readiness"><strong>Readiness</strong>{readinessMissing.length ? <span>Needs {readinessMissing.join(", ")}</span> : <span className="ready">Ready for review</span>}</div>
+-        {selectedNode.data.jiraKey ? <div className="pg-created-box">✓ Created in Jira <strong>{selectedNode.data.jiraKey}</strong></div> : selectedNode.data.type==="Note" ? <button className="pg-create" onClick={()=>updateSelected({type:"Task"})}>Convert note to Task</button> : <button className="pg-create" disabled={publishBusy||!selectedNode.data.title?.trim()||readinessMissing.length>0} onClick={publishSelected}>{publishBusy?"Creating…":"Create ticket in Jira"}</button>}
+-        <div className="pg-inspector-note">Creation is always explicit. Existing dataset IDs are used for planning context only and are never assumed to be Jira keys.</div><button className="pg-delete" disabled={Boolean(selectedNode.data.jiraKey)} onClick={deleteSelected}>Delete work item</button>
+-      </> : <div className="pg-inspector-empty"><strong>Inspector</strong><p>Select a card to edit it, choose its hierarchy, check for overlap and create it in Jira.</p></div>}</aside></main>
+-  </div>;
+-}
+-export default function PlanningPlayground(){return <ReactFlowProvider><PlaygroundInner/></ReactFlowProvider>;}
++import { useCallback, useEffect, useMemo, useRef, useState } from "react";
++import { useLocation, useNavigate } from "react-router-dom";
++import {
++  ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Controls, MiniMap,
++  Handle, Position, addEdge, useEdgesState, useNodesState, MarkerType,
++} from "@xyflow/react";
++import "@xyflow/react/dist/style.css";
++import "./PlanningPlayground.css";
++import { getCanvasGraph, runIntake, startJiraSync, watchJiraSync } from "../services/api";
++
++const TYPES = ["Epic", "Feature", "Story", "Task", "Note"];
++const TYPE_CLASS = { Epic: "epic", Feature: "feature", Story: "story", Task: "task", Note: "note" };
++const PARENT_TYPE = { Feature: "Epic", Story: "Feature", Task: "Feature" };
++const OPTION_GROUPS = [
++  { key: "Existing", label: "Existing from dataset" },
++  { key: "Draft", label: "New on this canvas" },
++  { key: "Created", label: "Created from this canvas" },
++];
++const DUPLICATE_HIGH = 0.22;
++const DUPLICATE_POSSIBLE = 0.36;
++
++function WorkNode({ data, selected }) {
++  return <div className={`pg-node pg-node-${TYPE_CLASS[data.type] || "note"} ${selected ? "is-selected" : ""}`}>
++    <Handle type="target" position={Position.Left} />
++    <div className="pg-node-top"><span className="pg-node-type">{data.type}</span><span className={`pg-state ${data.jiraKey ? "created" : data.analysis ? "review" : "draft"}`}>{data.jiraKey ? data.jiraKey : data.analysis ? "Reviewed" : "Draft"}</span></div>
++    <strong>{data.title || "Untitled work item"}</strong>
++    {data.parentTitle ? <small>↳ {data.parentTitle}</small> : data.sprint ? <small>{data.sprint}</small> : <small>Unscheduled</small>}
++    {data.duplicate?.ticket_id ? <span className="pg-node-warning">⚠ Similar: {data.duplicate.ticket_id}</span> : null}
++    <Handle type="source" position={Position.Right} />
++  </div>;
++}
++const nodeTypes = { work: WorkNode };
++const norm = (v) => String(v || "").trim().toLowerCase();
++const asDistance = (v) => v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null;
++
++function PlaygroundInner() {
++  const navigate = useNavigate();
++  const location = useLocation();
++  const [nodes, setNodes, onNodesChange] = useNodesState([]);
++  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
++  const [selectedId, setSelectedId] = useState(null);
++  const [newType, setNewType] = useState("Story");
++  const [title, setTitle] = useState("");
++  const [datasetGraph, setDatasetGraph] = useState(null);
++  const [analysisBusy, setAnalysisBusy] = useState(false);
++  const [publishBusy, setPublishBusy] = useState(false);
++  const publishCleanup = useRef(null);
++  useEffect(() => () => publishCleanup.current?.(), []);
++  const [notice, setNotice] = useState("");
++  const [relationMode, setRelationMode] = useState("Auto");
++  const datasetId = location.state?.datasetId || localStorage.getItem("foremanDatasetId") || "";
++
++  const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
++
++  useEffect(() => {
++    if (!datasetId) return;
++    getCanvasGraph(datasetId).then(setDatasetGraph).catch(() => setDatasetGraph(null));
++  }, [datasetId]);
++
++  useEffect(() => {
++    const context = location.state?.contextItem;
++    if (!context?.id) return;
++    setNotice(`Planning with context: ${context.title || context.summary || context.id}. Existing dataset work stays read-only; add a draft to propose changes.`);
++  }, [location.state]);
++
++  // Import a generated SAD proposal into the existing editable Planning Playground.
++  // Existing dataset tickets remain read-only; this creates only draft nodes.
++  const importedProposal = useRef(null);
++  useEffect(() => {
++    const proposal = location.state?.sadProposal;
++    if (!proposal?.tickets?.length || importedProposal.current === proposal) return;
++    importedProposal.current = proposal;
++    const draftNodes = proposal.tickets.map((ticket, index) => ({
++      id: ticket.id, type: "work",
++      position: { x: 110 + [0, 1, 2, 3][Math.min(["Epic", "Feature", "Story", "Task"].indexOf(ticket.type), 3)] * 310, y: 110 + index * 115 },
++      data: { type: ticket.type, title: ticket.title, description: ticket.description,
++        acceptanceCriteria: (ticket.acceptance_criteria || []).join("\n"), points: "", sprint: "", priority: "Medium",
++        parentId: ticket.parent_id, parentTitle: proposal.tickets.find(p => p.id === ticket.parent_id)?.title || "",
++        parentSource: "Draft", sourceSectionId: ticket.source_section_id, sourceExcerpt: ticket.source_excerpt,
++        assumptions: ticket.assumptions, duplicateCandidates: ticket.duplicate_candidates,
++        duplicate: ticket.duplicate_candidates?.[0] ? { ...ticket.duplicate_candidates[0], distance: null } : null, duplicateReviewed: false,
++        analysis: null, jiraKey: "", reviewStatus: ticket.review_status },
++    }));
++    const draftEdges = proposal.tickets.filter(t => t.parent_id).map(t => ({
++      id: `parent-${t.parent_id}-${t.id}`, source: t.parent_id, target: t.id,
++      label: "contains", data: { kind: "hierarchy" }, markerEnd: { type: MarkerType.ArrowClosed },
++    }));
++    setNodes(current => [...current.filter(n => !draftNodes.some(d => d.id === n.id)), ...draftNodes]);
++    setEdges(current => [...current.filter(e => !draftEdges.some(d => d.id === e.id)), ...draftEdges]);
++    setSelectedId(draftNodes[0]?.id || null);
++    setNotice(`SAD proposal imported: ${draftNodes.length} draft tickets. Review duplicate candidates and complete readiness fields before publishing. Existing dataset unchanged.`);
++    // Clear router payload so a later revisit cannot accidentally re-import it.
++    navigate(location.pathname, { replace: true, state: { datasetId } });
++  }, [location.state?.sadProposal, datasetId, setNodes, setEdges, navigate, location.pathname]);
++
++  const existingByType = useMemo(() => {
++    const all = [...(datasetGraph?.epics || []), ...(datasetGraph?.issues || [])];
++    return TYPES.reduce((acc, type) => {
++      acc[type] = all.filter((x) => norm(x.type) === norm(type)).sort((a,b) => String(a.title).localeCompare(String(b.title)));
++      return acc;
++    }, {});
++  }, [datasetGraph]);
++
++  const parentOptions = useMemo(() => {
++    if (!selectedNode) return [];
++    const required = PARENT_TYPE[selectedNode.data.type];
++    if (!required) return [];
++    const existing = (existingByType[required] || []).map((x) => ({ id:x.id, title:x.title, source:"Existing", item:x }));
++    const drafts = nodes.filter((n) => n.id !== selectedId && n.data.type === required).map((n) => ({ id:n.id, title:n.data.title, source:n.data.jiraKey ? "Created" : "Draft", item:n.data }));
++    return [...existing, ...drafts];
++  }, [existingByType, nodes, selectedId, selectedNode]);
++
++  const addNode = useCallback(() => {
++    const cleanTitle = title.trim() || `New ${newType}`;
++    const id = `draft-${Date.now()}`;
++    const index = nodes.length;
++    setNodes((current) => [...current, { id, type:"work", position:{ x:120+(index%4)*280, y:120+Math.floor(index/4)*180 }, data:{ type:newType, title:cleanTitle, points:"", sprint:"", description:"", acceptanceCriteria:"", priority:"Medium", parentId:"", parentTitle:"", analysis:null, duplicate:null, jiraKey:"" } }]);
++    setSelectedId(id); setTitle("");
++  }, [newType, nodes.length, setNodes, title]);
++
++  const updateNodeById = useCallback((nodeId, patch) => {
++    if (!nodeId) return;
++    setNodes((current) => current.map((n) => n.id === nodeId ? { ...n, data:{ ...n.data, ...patch, ...(Object.keys(patch).some((k) => ["title","description","type"].includes(k)) ? { analysis:null, duplicate:null, suggestedParentId:"" } : {}) } } : n));
++  }, [setNodes]);
++  const updateSelected = useCallback((patch) => updateNodeById(selectedId, patch), [selectedId, updateNodeById]);
++
++  const onConnect = useCallback((params) => {
++    const sourceNode = nodes.find((node) => node.id === params.source);
++    const targetNode = nodes.find((node) => node.id === params.target);
++    if (!sourceNode || !targetNode || sourceNode.id === targetNode.id) return;
++
++    const validHierarchy = PARENT_TYPE[targetNode.data.type] === sourceNode.data.type;
++    const useHierarchy = relationMode === "Hierarchy" || (relationMode === "Auto" && validHierarchy);
++
++    if (useHierarchy) {
++      if (!validHierarchy) {
++        setNotice(`Invalid hierarchy: ${sourceNode.data.type} cannot be the parent of ${targetNode.data.type}. Use Epic → Feature → Story/Task.`);
++        return;
++      }
++      const parentTitle = sourceNode.data.title || sourceNode.id;
++      updateNodeById(targetNode.id, { parentId: sourceNode.id, parentTitle, parentSource: sourceNode.data.jiraKey ? "Created" : "Draft" });
++      setEdges((current) => {
++        const withoutOldParent = current.filter((edge) => !(edge.data?.kind === "hierarchy" && edge.target === targetNode.id));
++        return addEdge({ ...params, id:`parent-${sourceNode.id}-${targetNode.id}`, label:"parent", data:{kind:"hierarchy"}, markerEnd:{type:MarkerType.ArrowClosed} }, withoutOldParent);
++      });
++      return;
++    }
++
++    const relation = relationMode === "Auto" ? "Relates" : relationMode;
++    setEdges((current) => addEdge({ ...params, id:`${relation.toLowerCase()}-${params.source}-${params.target}-${Date.now()}`, markerEnd:{ type:MarkerType.ArrowClosed }, label:relation.toLowerCase(), data:{ kind:"dependency", relation } }, current));
++  }, [nodes, relationMode, setEdges, updateNodeById]);
++  const setParent = (parentId) => {
++    const option = parentOptions.find((x) => x.id === parentId);
++    updateSelected({ parentId, parentTitle: option?.title || "", parentSource: option?.source || "" });
++    setEdges((current) => {
++      const withoutHierarchy = current.filter((e) => !(e.data?.kind === "hierarchy" && e.target === selectedId));
++      if (!parentId || !nodes.some((n) => n.id === parentId)) return withoutHierarchy;
++      return addEdge({ id:`parent-${parentId}-${selectedId}`, source:parentId, target:selectedId, label:"contains", data:{kind:"hierarchy"}, markerEnd:{type:MarkerType.ArrowClosed} }, withoutHierarchy);
++    });
++  };
++
++  const analyzeSelected = useCallback(async () => {
++    if (!selectedNode || selectedNode.data.type === "Note") return;
++    if (!datasetId) { setNotice("Connect a dataset to compare this draft with the existing backlog."); return; }
++    const text = [selectedNode.data.title, selectedNode.data.description, selectedNode.data.acceptanceCriteria].filter(Boolean).join("\n");
++    if (!text.trim()) return;
++    setAnalysisBusy(true); setNotice("");
++    try {
++      const result = await runIntake(datasetId, text, 8);
++      const candidates = (result.overlap_candidates || []).filter((c) => c.ticket_id).sort((a,b) => (asDistance(a.distance) ?? 99) - (asDistance(b.distance) ?? 99));
++      const best = candidates[0] || null;
++      const duplicate = best && asDistance(best.distance) !== null && asDistance(best.distance) <= DUPLICATE_POSSIBLE ? best : null;
++
++      // Suggest the hierarchy from the closest grounded backlog item, but never
++      // change the user's parent automatically. ParentID remains authoritative.
++      let suggestedParentId = "";
++      const allExisting = [...(datasetGraph?.epics || []), ...(datasetGraph?.issues || [])];
++      const byId = new Map(allExisting.map((item) => [String(item.id), item]));
++      let cursor = best?.ticket_id ? byId.get(String(best.ticket_id)) : null;
++      const requiredParentType = PARENT_TYPE[selectedNode.data.type];
++      if (cursor && requiredParentType) {
++        if (norm(cursor.type) === norm(requiredParentType)) suggestedParentId = cursor.id;
++        while (!suggestedParentId && cursor?.parent_id) {
++          cursor = byId.get(String(cursor.parent_id));
++          if (cursor && norm(cursor.type) === norm(requiredParentType)) suggestedParentId = cursor.id;
++        }
++      }
++      updateSelected({ analysis:result, duplicate, suggestedParentId });
++    } catch (error) { setNotice(error.message || "Foreman analysis failed."); }
++    finally { setAnalysisBusy(false); }
++  }, [datasetGraph, datasetId, selectedNode, updateSelected]);
++
++  const publishSelected = async () => {
++    if (!selectedNode || selectedNode.data.type === "Note" || publishBusy || selectedNode.data.jiraKey) return;
++    const data = selectedNode.data;
++    const missing = [
++      !data.title?.trim() && "title",
++      !data.description?.trim() && "description",
++      ["Story", "Task"].includes(data.type) && !(Number(data.points) > 0) && "positive story points",
++      data.type === "Story" && !data.acceptanceCriteria?.trim() && "acceptance criteria",
++      PARENT_TYPE[data.type] && !data.parentId && `${PARENT_TYPE[data.type]} placement`,
++    ].filter(Boolean);
++    if (missing.length) { setNotice(`Complete before publishing: ${missing.join(", ")}.`); return; }
++    if (data.duplicate?.ticket_id && !data.duplicateReviewed) { setNotice("Review the possible duplicate in the inspector before publishing."); return; }
++    if (data.duplicate?.ticket_id && !window.confirm(`Potential overlap with ${data.duplicate.ticket_id}. Have you reviewed it and confirmed this is genuinely new work?`)) return;
++    if (!window.confirm(`Publish "${data.title}" to sandbox Jira? This creates a real ticket.`)) return;
++    setPublishBusy(true);
++    setNotice("Starting Jira creation…");
++    const nodeId = selectedNode.id;
++    const issue = {
++      nodeId, issue_type:data.type, summary:data.title,
++      description:[data.description, data.parentTitle ? `Planning hierarchy: ${PARENT_TYPE[data.type] || "Parent"}: ${data.parentTitle}` : ""].filter(Boolean).join("\n\n"),
++      priority:data.priority || "Medium", story_points:data.points || undefined, sprint:data.sprint || undefined,
++      acceptance_criteria:(data.acceptanceCriteria || "").split("\n").map((x) => x.replace(/^[-•]\s*/, "").trim()).filter(Boolean),
++    };
++    const parentDraft = nodes.find((n) => n.id === data.parentId);
++    if (data.type === "Feature" && parentDraft?.data?.type === "Epic" && parentDraft.data.jiraKey) issue.epic_link = parentDraft.data.jiraKey;
++    if (data.type === "Story" && parentDraft?.data?.type === "Feature") {
++      const epicDraft = nodes.find((n) => n.id === parentDraft.data.parentId);
++      if (epicDraft?.data?.type === "Epic" && epicDraft.data.jiraKey) issue.epic_link = epicDraft.data.jiraKey;
++    }
++    if (data.type === "Task" && parentDraft?.data?.type === "Story" && parentDraft.data.jiraKey) issue.parent = parentDraft.data.jiraKey;
++    try {
++      const started = await startJiraSync([issue]);
++      if (!started?.jobId) throw new Error("Jira did not return a job ID.");
++      let finished = false;
++      let createdKey = "";
++      let closeStream = () => {};
++      const timeout = window.setTimeout(() => {
++        if (finished) return;
++        finished = true;
++        closeStream();
++        setPublishBusy(false);
++        setNotice(`Jira job ${started.jobId} has not reported a final result. Check Jira before retrying to avoid duplicate tickets.`);
++      }, 90000);
++      const finish = (message) => {
++        if (finished) return;
++        finished = true;
++        window.clearTimeout(timeout);
++        closeStream();
++        publishCleanup.current = null;
++        setPublishBusy(false);
++        setNotice(message);
++      };
++      closeStream = watchJiraSync(started.jobId, {
++        onEvent:(event) => {
++          if (finished) return;
++          if (event.status === "created" && event.nodeId === nodeId && event.key) {
++            createdKey = event.key;
++            updateNodeById(nodeId, { jiraKey:event.key });
++            setNotice(`Created ${event.key} in Jira; waiting for job completion…`);
++          } else if (event.status === "failed" && (!event.nodeId || event.nodeId === nodeId)) {
++            finish(event.error || "Jira creation failed.");
++          } else if (event.status === "job_failed") {
++            finish(event.error || "Jira job failed. Check Jira before retrying.");
++          } else if (event.status === "completed") {
++            finish(createdKey ? `Created ${createdKey} in Jira.` : `Job ${started.jobId} completed without a ticket key. Check Jira before retrying.`);
++          }
++        },
++        onError:() => finish(`Jira progress disconnected for job ${started.jobId}. Check Jira before retrying; creation may have succeeded.`),
++      });
++      if (finished) closeStream();
++      else publishCleanup.current = () => { window.clearTimeout(timeout); closeStream(); };
++    } catch (error) {
++      publishCleanup.current?.();
++      publishCleanup.current = null;
++      setPublishBusy(false);
++      setNotice(error.message || "Could not start Jira creation.");
++    }
++  };
++
++  const deleteSelected = () => { if (!selectedId) return; setNodes((c) => c.filter((n) => n.id !== selectedId)); setEdges((c) => c.filter((e) => e.source !== selectedId && e.target !== selectedId)); setSelectedId(null); };
++  const clearBoard = () => { if (!nodes.length || window.confirm("Clear every item from this planning canvas?")) { setNodes([]); setEdges([]); setSelectedId(null); } };
++  const draftKey = `foremanPlanningPlayground:${datasetId || "no-dataset"}`;
++  const saveBoard = () => { try { localStorage.setItem(draftKey, JSON.stringify({ nodes, edges, savedAt:new Date().toISOString() })); setNotice("Draft saved for this dataset."); } catch { setNotice("Unable to save draft: browser storage may be full."); } };
++  const restoreBoard = () => { try { const saved=JSON.parse(localStorage.getItem(draftKey)||"null"); if(saved?.nodes)setNodes(saved.nodes); if(saved?.edges)setEdges(saved.edges); } catch {} };
++
++  const duplicate = selectedNode?.data?.duplicate;
++  const distance = asDistance(duplicate?.distance);
++  const duplicateLevel = distance !== null && distance <= DUPLICATE_HIGH ? "High overlap" : "Possible overlap";
++  const readinessMissing = selectedNode ? [!selectedNode.data.description && "description", ["Story","Task"].includes(selectedNode.data.type) && !selectedNode.data.points && "story points", selectedNode.data.type === "Story" && !selectedNode.data.acceptanceCriteria && "acceptance criteria", PARENT_TYPE[selectedNode.data.type] && !selectedNode.data.parentId && `${PARENT_TYPE[selectedNode.data.type]} placement`].filter(Boolean) : [];
++
++  return <div className="pg-shell">
++    <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
++    <div className="pg-toolbar"><select value={newType} onChange={(e)=>setNewType(e.target.value)}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select><input value={title} onChange={(e)=>setTitle(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addNode()} placeholder="Describe a work item…"/><button className="primary" onClick={addNode}>+ Add to canvas</button><span className="pg-link-label">Arrow:</span><select value={relationMode} onChange={(e)=>setRelationMode(e.target.value)} title="Auto maps valid Epic → Feature → Story/Task arrows as hierarchy"><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select><span className="pg-tip">Draw arrows to map hierarchy or dependencies · Draft → Analyze → Review → Create</span></div>
++    {notice && <div className="pg-notice">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
++    <main className="pg-main"><section className="pg-canvas">{nodes.length===0&&<div className="pg-empty"><div className="pg-empty-icon">✦</div><h2>Your planning space is empty</h2><p>Add work, arrange it visually, then let Foreman compare drafts with the existing backlog before publishing.</p><div className="pg-empty-hints"><span>Epic → Feature → Story</span><span>Duplicate check</span><span>Dependencies</span><span>Human approval</span></div></div>}
++      <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>setSelectedId(n.id)} onPaneClick={()=>setSelectedId(null)} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding:0.18, minZoom:0.45, maxZoom:1 }} minZoom={.2} maxZoom={1.8} defaultEdgeOptions={{ style:{ strokeWidth:1.7 } }} proOptions={{hideAttribution:true}}><Background variant={BackgroundVariant.Dots} gap={24} size={1}/><MiniMap pannable zoomable/><Controls/></ReactFlow></section>
++      <aside className={`pg-inspector ${selectedNode?"open":""}`}>{selectedNode ? <>
++        <div className="pg-inspector-head"><div><span>{selectedNode.data.jiraKey ? "Created ticket" : "Draft work item"}</span><strong>{selectedNode.data.type}</strong></div><button onClick={()=>setSelectedId(null)}>×</button></div>
++        <label>Type<select value={selectedNode.data.type} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>updateSelected({type:e.target.value,parentId:"",parentTitle:""})}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select></label>
++        <label>Title<input value={selectedNode.data.title||""} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>updateSelected({title:e.target.value})}/></label>
++        {PARENT_TYPE[selectedNode.data.type] && <label className="pg-parent-field"><span className="pg-label-row"><span>{PARENT_TYPE[selectedNode.data.type]} placement</span><span className="pg-option-count">{parentOptions.length} available</span></span><select className="pg-parent-select" value={selectedNode.data.parentId||""} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>setParent(e.target.value)}><option value="">Choose {PARENT_TYPE[selectedNode.data.type]}…</option>{OPTION_GROUPS.map((group)=>{const opts=parentOptions.filter((x)=>x.source===group.key);return opts.length?<optgroup key={group.key} label={`${group.label} (${opts.length})`}>{opts.map((x)=><option key={`${group.key}-${x.id}`} value={x.id}>{x.title} · {x.id}</option>)}</optgroup>:null;})}</select><small className="pg-field-help">Existing {PARENT_TYPE[selectedNode.data.type]}s from the connected dataset and newly created {PARENT_TYPE[selectedNode.data.type]}s on this canvas are suggested together.</small>{selectedNode.data.suggestedParentId && selectedNode.data.suggestedParentId !== selectedNode.data.parentId ? <button type="button" className="pg-parent-suggestion" onClick={()=>setParent(selectedNode.data.suggestedParentId)}>✦ Foreman suggests {parentOptions.find((x)=>x.id===selectedNode.data.suggestedParentId)?.title || selectedNode.data.suggestedParentId}</button> : null}</label>}
++        <div className="pg-mapping-help">Tip: you can also map this item by drawing an arrow from its parent card. Valid hierarchy is Epic → Feature → Story/Task.</div><div className="pg-two"><label>Story points<input type="number" min="0" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.points||""} onChange={(e)=>updateSelected({points:e.target.value})}/></label><label>Priority<select disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.priority||"Medium"} onChange={(e)=>updateSelected({priority:e.target.value})}><option>Highest</option><option>High</option><option>Medium</option><option>Low</option><option>Lowest</option></select></label></div>
++        <label>Sprint<input value={selectedNode.data.sprint||""} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>updateSelected({sprint:e.target.value})} placeholder="Jira sprint ID"/></label>
++        <label>Description<textarea rows="4" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.description||""} onChange={(e)=>updateSelected({description:e.target.value})} placeholder="What is needed and why?"/></label>
++        {selectedNode.data.type==="Story" && <label>Acceptance criteria<textarea rows="4" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.acceptanceCriteria||""} onChange={(e)=>updateSelected({acceptanceCriteria:e.target.value})} placeholder="One criterion per line…"/></label>}
++        {selectedNode.data.sourceSectionId && <section className="pg-ai-card"><strong>SAD traceability</strong><p>Source section: {selectedNode.data.sourceSectionId}</p><p>{selectedNode.data.sourceExcerpt || "No source excerpt returned; verify against the document."}</p>{selectedNode.data.assumptions?.length > 0 && <p>Assumptions to review: {selectedNode.data.assumptions.join("; ")}</p>}</section>}
++        {selectedNode.data.duplicateCandidates?.length > 0 && <section className="pg-ai-card"><strong>Existing backlog candidates · review required</strong><p>Lexical/title screening only; these are not confirmed duplicates.</p>{selectedNode.data.duplicateCandidates.map(candidate => <p key={candidate.ticket_id}><b>{candidate.ticket_id}</b> · {candidate.title} · score {candidate.score}</p>)}<label><input type="checkbox" checked={Boolean(selectedNode.data.duplicateReviewed)} onChange={e => updateSelected({ duplicateReviewed: e.target.checked })}/> I reviewed the existing tickets and confirm this is separate new work.</label></section>}
++        {selectedNode.data.type!=="Note" && <section className="pg-ai-card"><div className="pg-ai-head"><div><span className="pg-spark">✦</span><strong>Foreman review</strong></div><button onClick={analyzeSelected} disabled={analysisBusy||Boolean(selectedNode.data.jiraKey)}>{analysisBusy?"Checking…":selectedNode.data.analysis?"Check again":"Analyze"}</button></div>
++          {!datasetId ? <p>Connect a dataset to check this draft against existing work.</p> : selectedNode.data.analysis ? <>{duplicate ? <div className="pg-duplicate"><div><strong>{duplicateLevel}</strong><span>{distance!==null?`distance ${distance.toFixed(3)}`:"semantic candidate"}</span></div><b>{duplicate.ticket_id}</b><p>{duplicate.title}</p><div className="pg-dup-actions"><button onClick={()=>updateSelected({duplicate:null})}>Not duplicate</button><button onClick={()=>navigate("/canvas",{state:{datasetId}})}>View existing</button></div></div> : <div className="pg-clear-check">✓ No high-confidence overlap was flagged by the current review threshold.</div>}
++          {(selectedNode.data.analysis.architecture_areas||[]).length>0&&<div className="pg-suggestions"><span>Architecture context</span>{selectedNode.data.analysis.architecture_areas.slice(0,3).map((a)=><button key={a.sad_section_id} title={a.sad_title}>{a.sad_section_id} · {a.title}</button>)}</div>}</> : <p>Analyze before publishing to surface related work, architecture context and dependency evidence.</p>}
++        </section>}
++        <div className="pg-readiness"><strong>Readiness</strong>{readinessMissing.length ? <span>Needs {readinessMissing.join(", ")}</span> : <span className="ready">Ready for review</span>}</div>
++        {selectedNode.data.jiraKey ? <div className="pg-created-box">✓ Created in Jira <strong>{selectedNode.data.jiraKey}</strong></div> : selectedNode.data.type==="Note" ? <button className="pg-create" onClick={()=>updateSelected({type:"Task"})}>Convert note to Task</button> : <button className="pg-create" disabled={publishBusy||!selectedNode.data.title?.trim()||readinessMissing.length>0||(selectedNode.data.duplicateCandidates?.length>0&&!selectedNode.data.duplicateReviewed)} onClick={publishSelected}>{publishBusy?"Creating…":"Create ticket in Jira"}</button>}
++        <div className="pg-inspector-note">Creation is always explicit. Existing dataset IDs are used for planning context only and are never assumed to be Jira keys.</div><button className="pg-delete" disabled={Boolean(selectedNode.data.jiraKey)} onClick={deleteSelected}>Delete work item</button>
++      </> : <div className="pg-inspector-empty"><strong>Inspector</strong><p>Select a card to edit it, choose its hierarchy, check for overlap and create it in Jira.</p></div>}</aside></main>
++  </div>;
++}
++export default function PlanningPlayground(){return <ReactFlowProvider><PlaygroundInner/></ReactFlowProvider>;}
+diff --git a/Frontend/src/pages/SADIntake.css b/Frontend/src/pages/SADIntake.css
+new file mode 100644
+index 0000000..dd57f18
+--- /dev/null
++++ b/Frontend/src/pages/SADIntake.css
+@@ -0,0 +1 @@
++.sad-page{max-width:960px;margin:0 auto;padding:30px 18px 60px;color:#15253d}.sad-intro{margin-bottom:28px}.sad-eyebrow{font-size:11px;font-weight:800;letter-spacing:.14em;color:#0066b3}.sad-intro h2{font-size:32px;letter-spacing:-.035em;margin:10px 0}.sad-intro p{max-width:670px;color:#66768b;line-height:1.6}.sad-panel{background:white;border:1px solid #dce4ee;border-radius:18px;box-shadow:0 14px 38px #12243b0d;padding:28px;display:flex;flex-direction:column;gap:14px}.sad-switch{display:flex;gap:8px;margin-bottom:10px}.sad-switch button{border:1px solid #dce4ee;background:#f5f8fc;border-radius:9px;padding:10px 18px;cursor:pointer}.sad-switch button.active{background:#0066b3;color:white;border-color:#0066b3}.sad-upload{border:2px dashed #9eb8d3;border-radius:12px;min-height:155px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;cursor:pointer;background:#f8fbff}.sad-upload input{max-width:250px}.sad-panel>input,.sad-panel textarea{border:1px solid #cbd6e3;border-radius:9px;padding:12px;font:inherit}.sad-panel textarea{resize:vertical;line-height:1.55}.sad-panel>label:not(.sad-upload){font-weight:700;font-size:13px}.sad-context{color:#536b85;font-size:13px}.sad-error{background:#fff1ed;color:#9c3421;padding:12px;border-radius:8px}.sad-submit{align-self:flex-start;background:#0066b3;color:white;border:0;border-radius:9px;padding:13px 20px;font-weight:700;cursor:pointer}.sad-submit:disabled{opacity:.5;cursor:not-allowed}
+diff --git a/Frontend/src/pages/SADIntake.jsx b/Frontend/src/pages/SADIntake.jsx
+new file mode 100644
+index 0000000..fb6bb5b
+--- /dev/null
++++ b/Frontend/src/pages/SADIntake.jsx
+@@ -0,0 +1,37 @@
++import { useState } from "react";
++import { useNavigate } from "react-router-dom";
++import { generateSADFile, generateSADText } from "../services/api";
++import "./SADIntake.css";
++
++export default function SADIntake() {
++  const navigate = useNavigate();
++  const datasetId = localStorage.getItem("foremanDatasetId") || "";
++  const [mode, setMode] = useState("file");
++  const [file, setFile] = useState(null);
++  const [title, setTitle] = useState("System Architecture Document");
++  const [text, setText] = useState("");
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState("");
++  const submit = async (event) => {
++    event.preventDefault();
++    if (busy) return;
++    setBusy(true); setError("");
++    try {
++      const proposal = mode === "file" ? await generateSADFile(datasetId, file) : await generateSADText(datasetId, text, title);
++      if (!Array.isArray(proposal?.tickets) || !proposal.tickets.length) throw new Error("No ticket proposals were returned.");
++      // Router state carries the proposal; the dataset workbook remains untouched.
++      navigate("/playground", { state: { datasetId, sadProposal: proposal } });
++    } catch (err) { setError(err.message || "Unable to generate SAD proposal."); }
++    finally { setBusy(false); }
++  };
++  return <div className="sad-page">
++    <div className="sad-intro"><span className="sad-eyebrow">ARCHITECTURE → DELIVERY</span><h2>Add System Architecture Document</h2><p>Generate a traceable, editable backlog proposal and review possible overlaps with your existing dataset. Jira is never changed automatically.</p></div>
++    <form className="sad-panel" onSubmit={submit}>
++      <div className="sad-switch"><button type="button" className={mode === "file" ? "active" : ""} onClick={() => setMode("file")}>Upload document</button><button type="button" className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}>Paste content</button></div>
++      {mode === "file" ? <label className="sad-upload">Select a PDF, DOCX, TXT or Markdown document<input type="file" accept=".pdf,.docx,.txt,.md" onChange={e => setFile(e.target.files?.[0] || null)} />{file && <strong>{file.name}</strong>}</label> : <><label htmlFor="sad-title">Document title</label><input id="sad-title" value={title} onChange={e => setTitle(e.target.value)} maxLength={200}/><label htmlFor="sad-content">Architecture content</label><textarea id="sad-content" value={text} onChange={e => setText(e.target.value)} rows={12} placeholder="Describe architecture, components, interfaces, security, deployment and testing…" /></>}
++      <p className="sad-context">{datasetId ? "✓ Existing dataset connected. Candidate duplicates will be shown for review." : "Connect an Excel dataset first to enable existing-backlog comparison."}</p>
++      {error && <div className="sad-error" role="alert">{error}</div>}
++      <button className="sad-submit" disabled={busy || !datasetId || (mode === "file" ? !file : text.trim().length < 60)}>{busy ? "Analyzing SAD and checking backlog…" : "Generate backlog proposal →"}</button>
++    </form>
++  </div>;
++}
+diff --git a/Frontend/src/services/api.js b/Frontend/src/services/api.js
+index 84a42ad..3379984 100644
+--- a/Frontend/src/services/api.js
++++ b/Frontend/src/services/api.js
+@@ -235,3 +235,15 @@ export function watchJiraSync(jobId, { onEvent, onError } = {}) {
+   };
+   return () => source.close();
+ }
++
++// SAD proposal generation; these endpoints never create Jira issues.
++export function generateSADText(datasetId, text, title) {
++  return request(`/datasets/${encodeURIComponent(datasetId)}/sad/generate`, {
++    method: "POST", headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ text, title }),
++  });
++}
++export function generateSADFile(datasetId, file) {
++  const body = new FormData(); body.append("file", file);
++  return request(`/datasets/${encodeURIComponent(datasetId)}/sad/upload`, { method: "POST", body });
++}
+diff --git a/backend/backend/main.py b/backend/backend/main.py
+index a6ca9f9..b9e6308 100644
+--- a/backend/backend/main.py
++++ b/backend/backend/main.py
+@@ -1,261 +1,285 @@
+-from __future__ import annotations
+-
+-import json
+-import os
+-import shutil
+-import threading
+-import uuid
+-from datetime import datetime, timezone
+-from pathlib import Path
+-from typing import Any
+-
+-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+-from fastapi.middleware.cors import CORSMiddleware
+-from pydantic import BaseModel, Field
+-
+-from ingest import ingest
+-from intake import IntakeProcessor
+-from rag import ForemanRAG
+-from search import ForemanSearch
+-from forecast import generate_forecast
+-from canvas import build_canvas_graph
+-from jira_sync import router as jira_router
+-
+-BASE_DIR = Path(__file__).resolve().parents[1]
+-DATASETS_DIR = Path(os.getenv("FOREMAN_DATASETS_DIR", str(BASE_DIR / "datasets")))
+-DATASETS_DIR.mkdir(parents=True, exist_ok=True)
+-COLLECTION_PREFIX = os.getenv("CHROMA_COLLECTION_PREFIX", "foreman_")
+-
+-app = FastAPI(
+-    title="Foreman Knowledge API",
+-    version="1.0.0",
+-    description="Upload an Excel knowledge base, ingest it into ChromaDB, query it through hybrid RAG, and generate dataset-driven OR-Tools delivery forecasts.",
+-)
+-
+-app.add_middleware(
+-    CORSMiddleware,
+-    allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","),
+-    allow_credentials=True,
+-    allow_methods=["*"],
+-    allow_headers=["*"],
+-)
+-
+-# Jira sync endpoints (/api/jira/health, /api/jira/sync, /api/jira/sync/{job_id}/events)
+-app.include_router(jira_router)
+-
+-class QueryRequest(BaseModel):
+-    question: str = Field(min_length=1)
+-    top_k: int = Field(default=6, ge=1, le=30)
+-    graph_depth: int = Field(default=2, ge=1, le=10)
+-
+-class IntakeRequest(BaseModel):
+-    text: str = Field(min_length=1)
+-    top_k: int = Field(default=8, ge=1, le=30)
+-
+-class IntakeConversationRequest(BaseModel):
+-    message: str = Field(min_length=1)
+-    history: list[dict[str, str]] = Field(default_factory=list)
+-    top_k: int = Field(default=8, ge=1, le=30)
+-
+-class SearchRequest(BaseModel):
+-    query: str = Field(min_length=1)
+-    top_k: int = Field(default=5, ge=1, le=30)
+-
+-class DatasetManager:
+-    def __init__(self):
+-        self._locks: dict[str, threading.RLock] = {}
+-        self._registry_lock = threading.RLock()
+-
+-    def lock(self, dataset_id: str) -> threading.RLock:
+-        with self._registry_lock:
+-            return self._locks.setdefault(dataset_id, threading.RLock())
+-
+-    def root(self, dataset_id: str) -> Path:
+-        return DATASETS_DIR / dataset_id
+-
+-    def paths(self, dataset_id: str) -> dict[str, Path]:
+-        root = self.root(dataset_id)
+-        return {
+-            "root": root,
+-            "excel": root / "dataset.xlsx",
+-            "chroma": root / "chroma",
+-            "graph": root / "dependency_graph.graphml",
+-            "metadata": root / "metadata.json",
+-        }
+-
+-    def read_metadata(self, dataset_id: str) -> dict[str, Any]:
+-        path = self.paths(dataset_id)["metadata"]
+-        if not path.exists():
+-            raise HTTPException(status_code=404, detail="Dataset not found")
+-        return json.loads(path.read_text(encoding="utf-8"))
+-
+-    def write_metadata(self, dataset_id: str, data: dict[str, Any]) -> None:
+-        self.paths(dataset_id)["metadata"].write_text(
+-            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+-        )
+-
+-    def create(self, filename: str) -> tuple[str, dict[str, Path]]:
+-        dataset_id = uuid.uuid4().hex
+-        paths = self.paths(dataset_id)
+-        paths["root"].mkdir(parents=True, exist_ok=False)
+-        now = datetime.now(timezone.utc).isoformat()
+-        self.write_metadata(dataset_id, {
+-            "dataset_id": dataset_id,
+-            "filename": filename,
+-            "status": "uploaded",
+-            "created_at": now,
+-            "updated_at": now,
+-            "collection_name": COLLECTION_PREFIX + dataset_id,
+-        })
+-        return dataset_id, paths
+-
+-    def update_status(self, dataset_id: str, status: str, **extra: Any) -> None:
+-        metadata = self.read_metadata(dataset_id)
+-        metadata.update(status=status, updated_at=datetime.now(timezone.utc).isoformat(), **extra)
+-        self.write_metadata(dataset_id, metadata)
+-
+-    def searcher(self, dataset_id: str) -> ForemanSearch:
+-        paths = self.paths(dataset_id)
+-        metadata = self.read_metadata(dataset_id)
+-        if metadata.get("status") != "ready":
+-            raise HTTPException(status_code=409, detail=f"Dataset is not ready: {metadata.get('status')}")
+-        return ForemanSearch(
+-            excel_path=paths["excel"],
+-            chroma_path=paths["chroma"],
+-            graph_path=paths["graph"],
+-            collection_name=metadata["collection_name"],
+-        )
+-
+-manager = DatasetManager()
+-
+-
+-def ingest_dataset(dataset_id: str) -> None:
+-    paths = manager.paths(dataset_id)
+-    metadata = manager.read_metadata(dataset_id)
+-    lock = manager.lock(dataset_id)
+-    with lock:
+-        manager.update_status(dataset_id, "ingesting", error=None)
+-        try:
+-            result = ingest(
+-                reset=True,
+-                excel_path=paths["excel"],
+-                chroma_path=paths["chroma"],
+-                graph_path=paths["graph"],
+-                collection_name=metadata["collection_name"],
+-            )
+-            manager.update_status(
+-                dataset_id,
+-                "ready",
+-                document_count=result.get("document_count"),
+-                graph=result.get("graph"),
+-            )
+-        except Exception as exc:
+-            manager.update_status(dataset_id, "failed", error=str(exc))
+-
+-
+-@app.get("/health")
+-def health():
+-    return {"status": "ok"}
+-
+-
+-@app.post("/datasets", status_code=202)
+-async def upload_dataset(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+-    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
+-        raise HTTPException(status_code=400, detail="Upload an Excel .xlsx or .xls dataset")
+-
+-    dataset_id, paths = manager.create(file.filename)
+-    try:
+-        with paths["excel"].open("wb") as handle:
+-            shutil.copyfileobj(file.file, handle)
+-    except Exception:
+-        shutil.rmtree(paths["root"], ignore_errors=True)
+-        raise
+-
+-    background_tasks.add_task(ingest_dataset, dataset_id)
+-    return {
+-        "dataset_id": dataset_id,
+-        "status": "ingesting",
+-        "message": "Dataset uploaded. Ingestion is running in the background.",
+-    }
+-
+-
+-@app.post("/datasets/{dataset_id}/ingest", status_code=202)
+-def reingest_dataset(dataset_id: str, background_tasks: BackgroundTasks):
+-    manager.read_metadata(dataset_id)
+-    background_tasks.add_task(ingest_dataset, dataset_id)
+-    return {"dataset_id": dataset_id, "status": "ingesting"}
+-
+-
+-@app.get("/datasets/{dataset_id}")
+-def dataset_status(dataset_id: str):
+-    return manager.read_metadata(dataset_id)
+-
+-
+-@app.post("/datasets/{dataset_id}/search")
+-def semantic_search(dataset_id: str, request: SearchRequest):
+-    searcher = manager.searcher(dataset_id)
+-    return {
+-        "dataset_id": dataset_id,
+-        "query": request.query,
+-        "results": searcher.search(request.query, top_k=request.top_k),
+-    }
+-
+-
+-@app.post("/datasets/{dataset_id}/rag/query")
+-def rag_query(dataset_id: str, request: QueryRequest):
+-    searcher = manager.searcher(dataset_id)
+-    rag = ForemanRAG(
+-        top_k=request.top_k,
+-        graph_depth=request.graph_depth,
+-        searcher=searcher,
+-    )
+-    answer = rag.answer(request.question)
+-    return {
+-        "dataset_id": dataset_id,
+-        "question": request.question,
+-        "answer": answer,
+-    }
+-
+-
+-@app.get("/datasets/{dataset_id}/canvas")
+-def canvas(dataset_id: str):
+-    """Return the SAD -> Epic -> Issue hierarchy plus issue dependencies."""
+-    paths = manager.paths(dataset_id)
+-    metadata = manager.read_metadata(dataset_id)
+-    if metadata.get("status") != "ready":
+-        raise HTTPException(status_code=409, detail=f"Dataset is not ready: {metadata.get('status')}")
+-    if not paths["excel"].exists():
+-        raise HTTPException(status_code=404, detail="Dataset Excel file not found")
+-    try:
+-        return {"dataset_id": dataset_id, **build_canvas_graph(paths["excel"])}
+-    except Exception as exc:
+-        raise HTTPException(status_code=500, detail=f"Canvas graph generation failed: {exc}") from exc
+-
+-
+-@app.post("/datasets/{dataset_id}/forecast")
+-def forecast(dataset_id: str):
+-    """Generate a dataset-driven velocity + OR-Tools delivery forecast for all teams."""
+-    paths = manager.paths(dataset_id)
+-    metadata = manager.read_metadata(dataset_id)
+-    if metadata.get("status") != "ready":
+-        raise HTTPException(status_code=409, detail=f"Dataset is not ready: {metadata.get('status')}")
+-    if not paths["excel"].exists():
+-        raise HTTPException(status_code=404, detail="Dataset Excel file not found")
+-    try:
+-        result = generate_forecast(paths["excel"])
+-    except Exception as exc:
+-        raise HTTPException(status_code=500, detail=f"Forecast generation failed: {exc}") from exc
+-    return {"dataset_id": dataset_id, **result}
+-
+-
+-@app.post("/datasets/{dataset_id}/intake")
+-def intake(dataset_id: str, request: IntakeRequest):
+-    searcher = manager.searcher(dataset_id)
+-    processor = IntakeProcessor(top_k=request.top_k, searcher=searcher)
+-    return processor.process(request.text)
+-
+-@app.post("/datasets/{dataset_id}/intake/conversation")
+-def intake_conversation(dataset_id: str, request: IntakeConversationRequest):
+-    searcher = manager.searcher(dataset_id)
+-    processor = IntakeProcessor(top_k=request.top_k, searcher=searcher)
+-    return processor.process_conversation(request.history, request.message)
++from __future__ import annotations
++
++import json
++import os
++import shutil
++import threading
++import uuid
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any
++
++from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
++from fastapi.middleware.cors import CORSMiddleware
++from pydantic import BaseModel, Field
++
++from ingest import ingest
++from intake import IntakeProcessor
++from rag import ForemanRAG
++from search import ForemanSearch
++from forecast import generate_forecast
++from canvas import build_canvas_graph
++from jira_sync import router as jira_router
++from sad_workflow import extract_document, generate_proposal, MAX_BYTES
++
++BASE_DIR = Path(__file__).resolve().parents[1]
++DATASETS_DIR = Path(os.getenv("FOREMAN_DATASETS_DIR", str(BASE_DIR / "datasets")))
++DATASETS_DIR.mkdir(parents=True, exist_ok=True)
++COLLECTION_PREFIX = os.getenv("CHROMA_COLLECTION_PREFIX", "foreman_")
++
++app = FastAPI(
++    title="Foreman Knowledge API",
++    version="1.0.0",
++    description="Upload an Excel knowledge base, ingest it into ChromaDB, query it through hybrid RAG, and generate dataset-driven OR-Tools delivery forecasts.",
++)
++
++app.add_middleware(
++    CORSMiddleware,
++    allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","),
++    allow_credentials=True,
++    allow_methods=["*"],
++    allow_headers=["*"],
++)
++
++# Jira sync endpoints (/api/jira/health, /api/jira/sync, /api/jira/sync/{job_id}/events)
++app.include_router(jira_router)
++
++class QueryRequest(BaseModel):
++    question: str = Field(min_length=1)
++    top_k: int = Field(default=6, ge=1, le=30)
++    graph_depth: int = Field(default=2, ge=1, le=10)
++
++class IntakeRequest(BaseModel):
++    text: str = Field(min_length=1)
++    top_k: int = Field(default=8, ge=1, le=30)
++
++class IntakeConversationRequest(BaseModel):
++    message: str = Field(min_length=1)
++    history: list[dict[str, str]] = Field(default_factory=list)
++    top_k: int = Field(default=8, ge=1, le=30)
++
++class SearchRequest(BaseModel):
++    query: str = Field(min_length=1)
++    top_k: int = Field(default=5, ge=1, le=30)
++
++class DatasetManager:
++    def __init__(self):
++        self._locks: dict[str, threading.RLock] = {}
++        self._registry_lock = threading.RLock()
++
++    def lock(self, dataset_id: str) -> threading.RLock:
++        with self._registry_lock:
++            return self._locks.setdefault(dataset_id, threading.RLock())
++
++    def root(self, dataset_id: str) -> Path:
++        return DATASETS_DIR / dataset_id
++
++    def paths(self, dataset_id: str) -> dict[str, Path]:
++        root = self.root(dataset_id)
++        return {
++            "root": root,
++            "excel": root / "dataset.xlsx",
++            "chroma": root / "chroma",
++            "graph": root / "dependency_graph.graphml",
++            "metadata": root / "metadata.json",
++        }
++
++    def read_metadata(self, dataset_id: str) -> dict[str, Any]:
++        path = self.paths(dataset_id)["metadata"]
++        if not path.exists():
++            raise HTTPException(status_code=404, detail="Dataset not found")
++        return json.loads(path.read_text(encoding="utf-8"))
++
++    def write_metadata(self, dataset_id: str, data: dict[str, Any]) -> None:
++        self.paths(dataset_id)["metadata"].write_text(
++            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
++        )
++
++    def create(self, filename: str) -> tuple[str, dict[str, Path]]:
++        dataset_id = uuid.uuid4().hex
++        paths = self.paths(dataset_id)
++        paths["root"].mkdir(parents=True, exist_ok=False)
++        now = datetime.now(timezone.utc).isoformat()
++        self.write_metadata(dataset_id, {
++            "dataset_id": dataset_id,
++            "filename": filename,
++            "status": "uploaded",
++            "created_at": now,
++            "updated_at": now,
++            "collection_name": COLLECTION_PREFIX + dataset_id,
++        })
++        return dataset_id, paths
++
++    def update_status(self, dataset_id: str, status: str, **extra: Any) -> None:
++        metadata = self.read_metadata(dataset_id)
++        metadata.update(status=status, updated_at=datetime.now(timezone.utc).isoformat(), **extra)
++        self.write_metadata(dataset_id, metadata)
++
++    def searcher(self, dataset_id: str) -> ForemanSearch:
++        paths = self.paths(dataset_id)
++        metadata = self.read_metadata(dataset_id)
++        if metadata.get("status") != "ready":
++            raise HTTPException(status_code=409, detail=f"Dataset is not ready: {metadata.get('status')}")
++        return ForemanSearch(
++            excel_path=paths["excel"],
++            chroma_path=paths["chroma"],
++            graph_path=paths["graph"],
++            collection_name=metadata["collection_name"],
++        )
++
++manager = DatasetManager()
++
++
++def ingest_dataset(dataset_id: str) -> None:
++    paths = manager.paths(dataset_id)
++    metadata = manager.read_metadata(dataset_id)
++    lock = manager.lock(dataset_id)
++    with lock:
++        manager.update_status(dataset_id, "ingesting", error=None)
++        try:
++            result = ingest(
++                reset=True,
++                excel_path=paths["excel"],
++                chroma_path=paths["chroma"],
++                graph_path=paths["graph"],
++                collection_name=metadata["collection_name"],
++            )
++            manager.update_status(
++                dataset_id,
++                "ready",
++                document_count=result.get("document_count"),
++                graph=result.get("graph"),
++            )
++        except Exception as exc:
++            manager.update_status(dataset_id, "failed", error=str(exc))
++
++
++@app.get("/health")
++def health():
++    return {"status": "ok"}
++
++
++@app.post("/datasets", status_code=202)
++async def upload_dataset(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
++    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
++        raise HTTPException(status_code=400, detail="Upload an Excel .xlsx or .xls dataset")
++
++    dataset_id, paths = manager.create(file.filename)
++    try:
++        with paths["excel"].open("wb") as handle:
++            shutil.copyfileobj(file.file, handle)
++    except Exception:
++        shutil.rmtree(paths["root"], ignore_errors=True)
++        raise
++
++    background_tasks.add_task(ingest_dataset, dataset_id)
++    return {
++        "dataset_id": dataset_id,
++        "status": "ingesting",
++        "message": "Dataset uploaded. Ingestion is running in the background.",
++    }
++
++
++@app.post("/datasets/{dataset_id}/ingest", status_code=202)
++def reingest_dataset(dataset_id: str, background_tasks: BackgroundTasks):
++    manager.read_metadata(dataset_id)
++    background_tasks.add_task(ingest_dataset, dataset_id)
++    return {"dataset_id": dataset_id, "status": "ingesting"}
++
++
++@app.get("/datasets/{dataset_id}")
++def dataset_status(dataset_id: str):
++    return manager.read_metadata(dataset_id)
++
++
++@app.post("/datasets/{dataset_id}/search")
++def semantic_search(dataset_id: str, request: SearchRequest):
++    searcher = manager.searcher(dataset_id)
++    return {
++        "dataset_id": dataset_id,
++        "query": request.query,
++        "results": searcher.search(request.query, top_k=request.top_k),
++    }
++
++
++@app.post("/datasets/{dataset_id}/rag/query")
++def rag_query(dataset_id: str, request: QueryRequest):
++    searcher = manager.searcher(dataset_id)
++    rag = ForemanRAG(
++        top_k=request.top_k,
++        graph_depth=request.graph_depth,
++        searcher=searcher,
++    )
++    answer = rag.answer(request.question)
++    return {
++        "dataset_id": dataset_id,
++        "question": request.question,
++        "answer": answer,
++    }
++
++
++@app.get("/datasets/{dataset_id}/canvas")
++def canvas(dataset_id: str):
++    """Return the SAD -> Epic -> Issue hierarchy plus issue dependencies."""
++    paths = manager.paths(dataset_id)
++    metadata = manager.read_metadata(dataset_id)
++    if metadata.get("status") != "ready":
++        raise HTTPException(status_code=409, detail=f"Dataset is not ready: {metadata.get('status')}")
++    if not paths["excel"].exists():
++        raise HTTPException(status_code=404, detail="Dataset Excel file not found")
++    try:
++        return {"dataset_id": dataset_id, **build_canvas_graph(paths["excel"])}
++    except Exception as exc:
++        raise HTTPException(status_code=500, detail=f"Canvas graph generation failed: {exc}") from exc
++
++
++@app.post("/datasets/{dataset_id}/forecast")
++def forecast(dataset_id: str):
++    """Generate a dataset-driven velocity + OR-Tools delivery forecast for all teams."""
++    paths = manager.paths(dataset_id)
++    metadata = manager.read_metadata(dataset_id)
++    if metadata.get("status") != "ready":
++        raise HTTPException(status_code=409, detail=f"Dataset is not ready: {metadata.get('status')}")
++    if not paths["excel"].exists():
++        raise HTTPException(status_code=404, detail="Dataset Excel file not found")
++    try:
++        result = generate_forecast(paths["excel"])
++    except Exception as exc:
++        raise HTTPException(status_code=500, detail=f"Forecast generation failed: {exc}") from exc
++    return {"dataset_id": dataset_id, **result}
++
++
++@app.post("/datasets/{dataset_id}/intake")
++def intake(dataset_id: str, request: IntakeRequest):
++    searcher = manager.searcher(dataset_id)
++    processor = IntakeProcessor(top_k=request.top_k, searcher=searcher)
++    return processor.process(request.text)
++
++@app.post("/datasets/{dataset_id}/intake/conversation")
++def intake_conversation(dataset_id: str, request: IntakeConversationRequest):
++    searcher = manager.searcher(dataset_id)
++    processor = IntakeProcessor(top_k=request.top_k, searcher=searcher)
++    return processor.process_conversation(request.history, request.message)
++
++
++class SADTextRequest(BaseModel):
++    text: str = Field(min_length=60, max_length=70000)
++    title: str = Field(default="System Architecture Document", max_length=200)
++
++
++@app.post("/datasets/{dataset_id}/sad/generate")
++def generate_sad_text(dataset_id: str, request: SADTextRequest):
++    metadata = manager.read_metadata(dataset_id)
++    if metadata.get("status") != "ready":
++        raise HTTPException(409, "Dataset must be ready before duplicate review")
++    return generate_proposal(request.text, manager.paths(dataset_id)["excel"], request.title)
++
++
++@app.post("/datasets/{dataset_id}/sad/upload")
++async def generate_sad_upload(dataset_id: str, file: UploadFile = File(...)):
++    metadata = manager.read_metadata(dataset_id)
++    if metadata.get("status") != "ready":
++        raise HTTPException(409, "Dataset must be ready before duplicate review")
++    data = await file.read(MAX_BYTES + 1)
++    text = extract_document(file.filename or "", data)
++    return generate_proposal(text, manager.paths(dataset_id)["excel"], file.filename or "SAD")
+diff --git a/backend/requirements-api.txt b/backend/requirements-api.txt
+index 326597a..9d6f212 100644
+--- a/backend/requirements-api.txt
++++ b/backend/requirements-api.txt
+@@ -1,5 +1,8 @@
+--r requirements.txt
+-fastapi>=0.115.0
+-uvicorn[standard]>=0.30.0
+-python-multipart>=0.0.9
+-requests>=2.31.0
++-r requirements.txt
++fastapi>=0.115.0
++uvicorn[standard]>=0.30.0
++python-multipart>=0.0.9
++requests>=2.31.0
++
++python-docx>=1.1.0
++pypdf>=5.0.0
+diff --git a/backend/sad_workflow.py b/backend/sad_workflow.py
+new file mode 100644
+index 0000000..09df81d
+--- /dev/null
++++ b/backend/sad_workflow.py
+@@ -0,0 +1,136 @@
++"""SAD proposal generation. Never writes to the source workbook or Jira."""
++from __future__ import annotations
++import io
++import re
++import uuid
++from difflib import SequenceMatcher
++from pathlib import Path
++import pandas as pd
++from fastapi import HTTPException
++from llm import LLMClient
++
++MAX_BYTES = 8 * 1024 * 1024
++MAX_CHARS = 70000
++TYPES = ('Epic', 'Feature', 'Story', 'Task')
++
++
++def extract_document(filename: str, content: bytes) -> str:
++    ext = Path(filename or '').suffix.lower()
++    if len(content) > MAX_BYTES:
++        raise HTTPException(413, 'SAD must be 8 MB or smaller')
++    if ext in ('.txt', '.md'):
++        try:
++            return content.decode('utf-8-sig')
++        except UnicodeDecodeError:
++            raise HTTPException(422, 'Upload UTF-8 text')
++    if ext == '.docx':
++        try:
++            from docx import Document
++            doc = Document(io.BytesIO(content))
++            return '\n'.join(p.text for p in doc.paragraphs if p.text.strip()) + '\n' + '\n'.join(' | '.join(c.text for c in row.cells) for table in doc.tables for row in table.rows)
++        except Exception as exc:
++            raise HTTPException(422, f'Unable to read DOCX: {exc}')
++    if ext == '.pdf':
++        try:
++            from pypdf import PdfReader
++            return '\n'.join(page.extract_text() or '' for page in PdfReader(io.BytesIO(content)).pages)
++        except Exception as exc:
++            raise HTTPException(422, f'Unable to read PDF: {exc}')
++    raise HTTPException(415, 'Supported SAD formats: PDF, DOCX, TXT, MD')
++
++
++def sections_from_text(text: str):
++    sections = []
++    current = None
++    for line in text.splitlines():
++        line = line.strip()
++        if not line:
++            continue
++        heading = re.match(r'^(?:#{1,4}\s+|(?:section\s+)?\d+(?:\.\d+)*[.)]?\s+)(.{3,100})$', line, re.I)
++        if heading:
++            current = {'id': f'section-{len(sections)+1}', 'title': heading.group(1).strip(), 'text': ''}
++            sections.append(current)
++        elif current:
++            current['text'] += line + '\n'
++        else:
++            current = {'id': 'section-1', 'title': 'Overview', 'text': line + '\n'}
++            sections.append(current)
++    return sections[:80]
++
++
++def _tokens(text):
++    return set(re.findall(r'[a-z0-9]{3,}', str(text).lower())) - {'the','and','for','with','from','this','that','into','should','shall','must','will','have','using'}
++
++
++def _candidate(proposal, backlog):
++    query = f"{proposal['title']} {proposal.get('description','')}"
++    q = _tokens(query)
++    found = []
++    for _, row in backlog.iterrows():
++        title = str(row.get('Title', ''))
++        body = f"{title} {row.get('Description', '')} {row.get('AcceptanceCriteria', '')}"
++        b = _tokens(body)
++        overlap = len(q & b) / max(1, len(q | b))
++        title_similarity = SequenceMatcher(None, proposal['title'].lower(), title.lower()).ratio()
++        score = round(max(overlap, title_similarity * .75), 3)
++        if score >= .28:
++            found.append({'ticket_id': str(row.get('TicketID','')), 'title': title, 'type': str(row.get('Type','')), 'status': str(row.get('Status','')), 'score': score, 'reason': 'Lexical/title candidate; compare scope and acceptance criteria before deciding.'})
++    return sorted(found, key=lambda item: item['score'], reverse=True)[:3]
++
++
++def generate_proposal(text: str, excel_path: Path, document_title: str):
++    text = text.strip()
++    if len(text) < 60:
++        raise HTTPException(422, 'Provide at least 60 characters of architecture content')
++    if len(text) > MAX_CHARS:
++        raise HTTPException(413, f'SAD text must be {MAX_CHARS} characters or fewer')
++    sections = sections_from_text(text)
++    llm = LLMClient()
++    if not llm.enabled:
++        raise HTTPException(503, 'SAD generation requires LLM_PROVIDER=groq or bedrock. No tickets were generated.')
++    prompt = ('You convert a system architecture document into delivery work. Return ONLY JSON with key tickets: array of objects. '
++              'Each object has temp_id, parent_temp_id (empty for Epic), type (Epic, Feature, Story, Task), title, description, acceptance_criteria (array of strings), source_section_id, source_excerpt (verbatim short quote), assumptions (array). '
++              'Hierarchy Epic -> Feature -> Story/Task. Cover application, security, infrastructure, QA, observability and release when actually supported by the SAD. '
++              'Never invent requirements; mark uncertainty in assumptions. Do not create Jira IDs. Do not claim existing backlog is absent. '
++              'Keep source_section_id from supplied sections and ensure unique temp_id values. Max 60 tickets.')
++    try:
++        output = llm.generate_json(prompt, str({'document_title':document_title, 'sections':sections})[:MAX_CHARS], max_tokens=7000)
++    except Exception as exc:
++        raise HTTPException(502, f'SAD generation provider failed: {exc}')
++    raw = output.get('tickets')
++    if not isinstance(raw, list) or not raw:
++        raise HTTPException(502, 'Model did not return a valid tickets array; please retry or revise the document')
++    by_source = {s['id']:s for s in sections}
++    prepared = []
++    id_map = {}
++    for item in raw[:60]:
++        if not isinstance(item, dict) or item.get('type') not in TYPES or not str(item.get('title','')).strip():
++            continue
++        original = str(item.get('temp_id','')).strip()
++        if not original or original in id_map:
++            raise HTTPException(502, 'Generated ticket IDs are missing or duplicated')
++        id_map[original] = f'sad-{uuid.uuid4().hex[:12]}'
++    for item in raw[:60]:
++        if not isinstance(item, dict) or str(item.get('temp_id','')) not in id_map:
++            continue
++        kind = item['type']
++        parent = str(item.get('parent_temp_id') or '').strip()
++        if kind != 'Epic' and parent not in id_map:
++            raise HTTPException(502, f'Generated {kind} has no valid parent')
++        if kind == 'Epic' and parent:
++            raise HTTPException(502, 'Generated Epic unexpectedly has a parent')
++        source_id = str(item.get('source_section_id',''))
++        if source_id not in by_source:
++            raise HTTPException(502, 'Generated ticket has an unknown SAD source section')
++        criteria = item.get('acceptance_criteria', [])
++        prepared.append({'id':id_map[str(item['temp_id'])], 'parent_id':id_map.get(parent,''), 'type':kind, 'title':str(item['title']).strip()[:255], 'description':str(item.get('description','')).strip(), 'acceptance_criteria':[str(x) for x in criteria] if isinstance(criteria,list) else [], 'source_section_id':source_id, 'source_excerpt':str(item.get('source_excerpt',''))[:500], 'assumptions':item.get('assumptions',[]) if isinstance(item.get('assumptions',[]),list) else []})
++    types_by_id = {item['id']:item['type'] for item in prepared}
++    for item in prepared:
++        expected = {'Feature':'Epic','Story':'Feature','Task':'Feature'}.get(item['type'])
++        if expected and types_by_id.get(item['parent_id']) != expected:
++            raise HTTPException(502, f"Generated {item['type']} has invalid parent hierarchy")
++    backlog = pd.read_excel(excel_path, sheet_name='Backlog').fillna('')
++    for item in prepared:
++        item['duplicate_candidates'] = _candidate(item, backlog)
++        item['review_status'] = 'potential_duplicate' if item['duplicate_candidates'] else 'new_proposal'
++    return {'document_title':document_title, 'sections':[{'id':s['id'],'title':s['title']} for s in sections], 'tickets':prepared, 'coverage': [{'section_id':s['id'],'title':s['title'],'ticket_count':sum(t['source_section_id']==s['id'] for t in prepared)} for s in sections], 'duplicate_method':'Lexical/title candidate screening; human review required. No semantic verification claimed.', 'publish_status':'draft_only'}

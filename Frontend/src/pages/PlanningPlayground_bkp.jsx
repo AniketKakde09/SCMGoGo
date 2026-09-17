@@ -62,16 +62,10 @@ function WorkNode({ data, selected }) {
     {data.parentTitle ? <small>↳ {data.parentTitle}</small> : data.sprint ? <small>{data.sprint}</small> : <small>Unscheduled</small>}
     {data.jiraKey && jiraLink(data.jiraKey) ? <a className="pg-jira-link" href={jiraLink(data.jiraKey)} target="_blank" rel="noopener noreferrer" onClick={(event)=>event.stopPropagation()}>Open {data.jiraKey} in Jira ↗</a> : null}
     {data.publishError ? <span className="pg-node-warning">{data.publishError}</span> : null}
-    {needsDuplicateReview(data) ? <span className="pg-node-warning">High-confidence overlap · review</span> : null}
+    {data.duplicate?.ticket_id ? <span className="pg-node-warning">Potential overlap · review</span> : null}
     <Handle type="source" position={Position.Right} />
   </div>;
 }
-// Old saved proposals may contain low-confidence lexical candidates. Never
-// treat them as review blockers unless the backend explicitly marks them high.
-const highConfidenceCandidates = (data) => (data?.duplicateCandidates || []).filter(
-  candidate => candidate?.confidence === "high" && Boolean(candidate.ticket_id)
-);
-const needsDuplicateReview = (data) => highConfidenceCandidates(data).length > 0 && !data?.duplicateReviewed;
 const nodeTypes = { work: WorkNode };
 const norm = (v) => String(v || "").trim().toLowerCase();
 const asDistance = (v) => v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null;
@@ -126,8 +120,8 @@ function PlaygroundInner() {
         acceptanceCriteria: (ticket.acceptance_criteria || []).join("\n"), points: "", sprint: "", priority: "Medium",
         parentId: idMap.get(ticket.parent_id) || "", parentTitle: titles.get(ticket.parent_id) || "",
         parentSource: "Draft", sourceSectionId: ticket.source_section_id, sourceExcerpt: ticket.source_excerpt,
-        assumptions: ticket.assumptions, duplicateCandidates: (ticket.duplicate_candidates || []).filter(candidate => candidate.confidence === "high" && candidate.ticket_id),
-        duplicate: (ticket.duplicate_candidates || []).find(candidate => candidate.confidence === "high" && candidate.ticket_id) || null,
+        assumptions: ticket.assumptions, duplicateCandidates: ticket.duplicate_candidates || [],
+        duplicate: ticket.duplicate_candidates?.[0] || null,
         duplicateReviewed: false, analysis: null, jiraKey: "", reviewStatus: ticket.review_status },
     }));
     const draftEdges = proposal.tickets.filter(ticket => idMap.has(ticket.parent_id)).map(ticket => ({
@@ -140,7 +134,7 @@ function PlaygroundInner() {
     setEdges(current => [...current, ...draftEdges]);
     setSelectedId(draftNodes[0]?.id || null);
     window.setTimeout(() => fitView({ padding: 0.12, duration: 450 }), 150);
-    setNotice(`Imported ${draftNodes.length} SAD drafts. Review any high-confidence duplicates and readiness before publishing. Existing dataset unchanged.`);
+    setNotice(`Imported ${draftNodes.length} SAD drafts. Review duplicate candidates and readiness before publishing. Existing dataset unchanged.`);
     navigate(location.pathname, { replace: true, state: { datasetId } });
   }, [location.state?.sadProposal, datasetId, setNodes, setEdges, navigate, location.pathname, fitView]);
 
@@ -220,7 +214,7 @@ function PlaygroundInner() {
       const result = await runIntake(datasetId, text, 8);
       const candidates = (result.overlap_candidates || []).filter((c) => c.ticket_id).sort((a,b) => (asDistance(a.distance) ?? 99) - (asDistance(b.distance) ?? 99));
       const best = candidates[0] || null;
-      const duplicate = best && asDistance(best.distance) !== null && asDistance(best.distance) <= DUPLICATE_HIGH ? best : null;
+      const duplicate = best && asDistance(best.distance) !== null && asDistance(best.distance) <= DUPLICATE_POSSIBLE ? best : null;
 
       // Suggest the hierarchy from the closest grounded backlog item, but never
       // change the user's parent automatically. ParentID remains authoritative.
@@ -252,8 +246,8 @@ function PlaygroundInner() {
       PARENT_TYPE[data.type] && !data.parentId && `${PARENT_TYPE[data.type]} placement`,
     ].filter(Boolean);
     if (missing.length) { setNotice(`Complete before publishing: ${missing.join(", ")}.`); return; }
-    if (needsDuplicateReview(data)) { setNotice("Review the SAD duplicate candidates before publishing."); return; }
-    if (highConfidenceCandidates(data).length && !window.confirm(`Potential overlap with ${data.duplicate.ticket_id}. Have you reviewed it and confirmed this is genuinely new work?`)) return;
+    if (data.duplicateCandidates?.length && !data.duplicateReviewed) { setNotice("Review the SAD duplicate candidates before publishing."); return; }
+    if (data.duplicate?.ticket_id && !window.confirm(`Potential overlap with ${data.duplicate.ticket_id}. Have you reviewed it and confirmed this is genuinely new work?`)) return;
     if (!window.confirm(`Publish "${data.title}" to sandbox Jira? This creates a real ticket.`)) return;
     setPublishBusy(true);
     setNotice("Starting Jira creation…");
@@ -336,9 +330,9 @@ function PlaygroundInner() {
       return missing.length ? [`${node.data.title || node.id}: ${missing.join(", ")}`] : [];
     });
     if (problems.length) { setNotice(`Resolve readiness before creating all: ${problems.slice(0, 4).join("; ")}${problems.length > 4 ? ` (+${problems.length - 4} more)` : ""}.`); return; }
-    const unreviewed = pending.filter(node => needsDuplicateReview(node.data));
+    const unreviewed = pending.filter(node => node.data.duplicateCandidates?.length && !node.data.duplicateReviewed);
     if (unreviewed.length) { setNotice(`Review duplicate candidates for ${unreviewed.length} SAD drafts before creating tickets.`); return; }
-    const duplicates = pending.filter((node)=>highConfidenceCandidates(node.data).length);
+    const duplicates = pending.filter((node)=>node.data.duplicate?.ticket_id);
     if (duplicates.length && !window.confirm(`${duplicates.length} drafts have potential duplicate matches. Review these before publishing. Continue anyway?`)) return;
     if (!window.confirm(`Create ${pending.length} Jira tickets in Epic → Feature → Story/Task → Sub-task order? This writes to Jira and cannot be undone here.`)) return;
     const findEpic = (node) => {
@@ -425,7 +419,7 @@ function PlaygroundInner() {
 
   const counts = useMemo(() => TYPES.reduce((acc, type) => ({ ...acc, [type]: nodes.filter(n => n.data.type === type).length }), {}), [nodes]);
   const visibleIds = useMemo(() => {
-    const matches = nodes.filter(n => (typeFilter === "All" || n.data.type === typeFilter || (typeFilter === "Duplicates" && needsDuplicateReview(n.data))) && (!searchText.trim() || `${n.data.title} ${n.data.description}`.toLowerCase().includes(searchText.toLowerCase())));
+    const matches = nodes.filter(n => (typeFilter === "All" || n.data.type === typeFilter || (typeFilter === "Duplicates" && n.data.duplicateCandidates?.length)) && (!searchText.trim() || `${n.data.title} ${n.data.description}`.toLowerCase().includes(searchText.toLowerCase())));
     if (typeFilter === "All" && !searchText.trim()) return new Set(nodes.map(n => n.id));
     const ids = new Set(matches.map(n => n.id));
     for (const n of matches) { let cursor = n; const seen = new Set(); while (cursor?.data.parentId && !seen.has(cursor.id)) { seen.add(cursor.id); ids.add(cursor.data.parentId); cursor = nodes.find(x => x.id === cursor.data.parentId); } }
@@ -434,14 +428,14 @@ function PlaygroundInner() {
   const displayedNodes = useMemo(() => nodes.filter(n => visibleIds.has(n.id)).map(n => ({...n, data: {...n.data, childCount: nodes.filter(child => child.data.parentId === n.id).length}})), [nodes, visibleIds]);
   const displayedEdges = useMemo(() => edges.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target)), [edges, visibleIds]);
   const arrange = () => { setNodes(current => layoutHierarchy(current)); window.setTimeout(() => fitView({padding: 0.12, duration: 450}), 50); };
-  const duplicate = selectedNode?.data?.duplicate?.confidence === "high" || (selectedNode?.data?.analysis && selectedNode?.data?.duplicate?.distance != null && asDistance(selectedNode.data.duplicate.distance) <= DUPLICATE_HIGH) ? selectedNode?.data?.duplicate : null;
+  const duplicate = selectedNode?.data?.duplicate;
   const distance = asDistance(duplicate?.distance);
   const duplicateLevel = distance !== null && distance <= DUPLICATE_HIGH ? "High overlap" : "Possible overlap";
   const readinessMissing = selectedNode ? missingFor(selectedNode.data) : [];
 
   return <div className="pg-shell">
     <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button className="pg-bulk-create" disabled={publishBusy || !nodes.some((n)=>n.data.type!=="Note" && !n.data.jiraKey)} onClick={publishAll}>{publishBusy ? "Creating tickets…" : `Create all tickets (${nodes.filter((n)=>n.data.type!=="Note" && !n.data.jiraKey).length})`}</button><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
-    <div className="pg-studio-controls"><div className="pg-filters">{["All", "Epic", "Feature", "Story", "Task", "Duplicates"].map(type => <button key={type} className={typeFilter === type ? "active" : ""} onClick={() => setTypeFilter(type)}>{type === "All" ? "All" : type === "Duplicates" ? "Needs duplicate review" : `${type}s`} <b>{type === "All" ? nodes.length : type === "Duplicates" ? nodes.filter(n => needsDuplicateReview(n.data)).length : counts[type]}</b></button>)}</div><div className="pg-view-actions"><input aria-label="Search work items" placeholder="Search work items…" value={searchText} onChange={e => setSearchText(e.target.value)}/><button onClick={arrange}>Organize layout</button><button onClick={() => fitView({padding: 0.12, duration: 400})}>Fit view</button><span>Hierarchy view</span></div></div>
+    <div className="pg-studio-controls"><div className="pg-filters">{["All", "Epic", "Feature", "Story", "Task", "Duplicates"].map(type => <button key={type} className={typeFilter === type ? "active" : ""} onClick={() => setTypeFilter(type)}>{type === "All" ? "All" : type === "Duplicates" ? "Needs duplicate review" : `${type}s`} <b>{type === "All" ? nodes.length : type === "Duplicates" ? nodes.filter(n => n.data.duplicateCandidates?.length).length : counts[type]}</b></button>)}</div><div className="pg-view-actions"><input aria-label="Search work items" placeholder="Search work items…" value={searchText} onChange={e => setSearchText(e.target.value)}/><button onClick={arrange}>Organize layout</button><button onClick={() => fitView({padding: 0.12, duration: 400})}>Fit view</button><span>Hierarchy view</span></div></div>
     <div className="pg-toolbar"><select value={newType} onChange={(e)=>setNewType(e.target.value)}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select><input value={title} onChange={(e)=>setTitle(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addNode()} placeholder="Describe a work item…"/><button className="primary" onClick={addNode}>+ Add to canvas</button><span className="pg-link-label">Arrow:</span><select value={relationMode} onChange={(e)=>setRelationMode(e.target.value)} title="Auto maps valid Epic → Feature → Story/Task arrows as hierarchy"><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select><span className="pg-tip">Draw arrows to map hierarchy or dependencies · Draft → Analyze → Review → Create</span></div>
     {bulkProgress && <div className="pg-bulk-progress" role="status"><strong>Jira creation · {bulkProgress.completed}/{bulkProgress.total}</strong><span>✓ {bulkProgress.created} created · ✕ {bulkProgress.failed} failed</span><progress value={bulkProgress.completed} max={bulkProgress.total} />{bulkProgress.jobId && <small>Job {bulkProgress.jobId}</small>}</div>}
     {notice && <div className="pg-notice">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
@@ -457,13 +451,13 @@ function PlaygroundInner() {
         <label>Description<textarea rows="4" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.description||""} onChange={(e)=>updateSelected({description:e.target.value})} placeholder="What is needed and why?"/></label>
         {selectedNode.data.type==="Story" && <label>Acceptance criteria<textarea rows="4" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.acceptanceCriteria||""} onChange={(e)=>updateSelected({acceptanceCriteria:e.target.value})} placeholder="One criterion per line…"/></label>}
         {selectedNode.data.sourceSectionId && <section className="pg-ai-card"><strong>SAD traceability</strong><p>Source section: {selectedNode.data.sourceSectionId}</p><p>{selectedNode.data.sourceExcerpt || "No source excerpt returned; verify against the document."}</p>{selectedNode.data.assumptions?.length > 0 && <p>Assumptions to review: {selectedNode.data.assumptions.join("; ")}</p>}</section>}
-        {highConfidenceCandidates(selectedNode.data).length > 0 && <section className="pg-ai-card"><strong>High-confidence duplicate candidates · review required</strong><p>Strong title and description overlap; verify scope before publishing.</p>{highConfidenceCandidates(selectedNode.data).map(candidate => <p key={candidate.ticket_id}><b>{candidate.ticket_id}</b> · {candidate.title} · score {candidate.score}</p>)}<label><input type="checkbox" checked={Boolean(selectedNode.data.duplicateReviewed)} disabled={Boolean(selectedNode.data.jiraKey)} onChange={e => updateSelected({ duplicateReviewed: e.target.checked })}/> I reviewed these candidates and confirm this is separate new work.</label></section>}
+        {selectedNode.data.duplicateCandidates?.length > 0 && <section className="pg-ai-card"><strong>Existing backlog candidates · review required</strong><p>Lexical/title screening only; these are not confirmed duplicates.</p>{selectedNode.data.duplicateCandidates.map(candidate => <p key={candidate.ticket_id}><b>{candidate.ticket_id}</b> · {candidate.title} · score {candidate.score}</p>)}<label><input type="checkbox" checked={Boolean(selectedNode.data.duplicateReviewed)} disabled={Boolean(selectedNode.data.jiraKey)} onChange={e => updateSelected({ duplicateReviewed: e.target.checked })}/> I reviewed these candidates and confirm this is separate new work.</label></section>}
         {selectedNode.data.type!=="Note" && <section className="pg-ai-card"><div className="pg-ai-head"><div><span className="pg-spark">✦</span><strong>Foreman review</strong></div><button onClick={analyzeSelected} disabled={analysisBusy||Boolean(selectedNode.data.jiraKey)}>{analysisBusy?"Checking…":selectedNode.data.analysis?"Check again":"Analyze"}</button></div>
           {!datasetId ? <p>Connect a dataset to check this draft against existing work.</p> : selectedNode.data.analysis ? <>{duplicate ? <div className="pg-duplicate"><div><strong>{duplicateLevel}</strong><span>{distance!==null?`distance ${distance.toFixed(3)}`:"semantic candidate"}</span></div><b>{duplicate.ticket_id}</b><p>{duplicate.title}</p><div className="pg-dup-actions"><button onClick={()=>updateSelected({duplicate:null})}>Not duplicate</button><button onClick={()=>navigate("/canvas",{state:{datasetId}})}>View existing</button></div></div> : <div className="pg-clear-check">✓ No high-confidence overlap was flagged by the current review threshold.</div>}
           {(selectedNode.data.analysis.architecture_areas||[]).length>0&&<div className="pg-suggestions"><span>Architecture context</span>{selectedNode.data.analysis.architecture_areas.slice(0,3).map((a)=><button key={a.sad_section_id} title={a.sad_title}>{a.sad_section_id} · {a.title}</button>)}</div>}</> : <p>Analyze before publishing to surface related work, architecture context and dependency evidence.</p>}
         </section>}
         <div className="pg-readiness"><strong>Readiness</strong>{readinessMissing.length ? <span>Needs {readinessMissing.join(", ")}</span> : <span className="ready">Ready for review</span>}</div>
-        {selectedNode.data.jiraKey ? <div className="pg-created-box">✓ Created in Jira {jiraLink(selectedNode.data.jiraKey) ? <a href={jiraLink(selectedNode.data.jiraKey)} target="_blank" rel="noopener noreferrer">{selectedNode.data.jiraKey} ↗</a> : <strong>{selectedNode.data.jiraKey}</strong>}</div> : selectedNode.data.type==="Note" ? <button className="pg-create" onClick={()=>updateSelected({type:"Task"})}>Convert note to Task</button> : <button className="pg-create" disabled={publishBusy||!selectedNode.data.title?.trim()||readinessMissing.length>0||needsDuplicateReview(selectedNode.data)} onClick={publishSelected}>{publishBusy?"Creating…":"Create ticket in Jira"}</button>}
+        {selectedNode.data.jiraKey ? <div className="pg-created-box">✓ Created in Jira {jiraLink(selectedNode.data.jiraKey) ? <a href={jiraLink(selectedNode.data.jiraKey)} target="_blank" rel="noopener noreferrer">{selectedNode.data.jiraKey} ↗</a> : <strong>{selectedNode.data.jiraKey}</strong>}</div> : selectedNode.data.type==="Note" ? <button className="pg-create" onClick={()=>updateSelected({type:"Task"})}>Convert note to Task</button> : <button className="pg-create" disabled={publishBusy||!selectedNode.data.title?.trim()||readinessMissing.length>0||(selectedNode.data.duplicateCandidates?.length>0&&!selectedNode.data.duplicateReviewed)} onClick={publishSelected}>{publishBusy?"Creating…":"Create ticket in Jira"}</button>}
         <div className="pg-inspector-note">Creation is always explicit. Existing dataset IDs are used for planning context only and are never assumed to be Jira keys.</div><button className="pg-delete" disabled={publishBusy || Boolean(selectedNode.data.jiraKey)} onClick={deleteSelected}>Delete work item</button>
       </> : <div className="pg-inspector-empty"><strong>Inspector</strong><p>Select a card to edit it, choose its hierarchy, check for overlap and create it in Jira.</p></div>}</aside></main>
   </div>;

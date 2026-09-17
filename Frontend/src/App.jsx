@@ -5,48 +5,24 @@ import Start from "./pages/Start";
 import UploadDataset from "./pages/UploadDataset";
 import Canvas from "./pages/Canvas";
 import PlanningPlayground from "./pages/PlanningPlayground";
+import SADIntake from "./pages/SADIntake";
 import ForecastReportRoute from "./pages/ForecastReportRoute";
+import WorkspaceShell from "./components/WorkspaceShell";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-
-        <Route
-          path="/signin"
-          element={<SignIn />}
-        />
-
-        <Route
-          path="/start"
-          element={<Start />}
-        />
-
-        <Route
-          path="/upload"
-          element={<UploadDataset />}
-        />
-
-        <Route
-          path="/report"
-          element={<ForecastReportRoute />}
-        />
-
-        <Route
-          path="/canvas"
-          element={<Canvas />}
-        />
-
-        <Route
-          path="/playground"
-          element={<PlanningPlayground />}
-        />
-
-        <Route
-          path="*"
-          element={<Navigate to="/signin" replace />}
-        />
-
+        <Route path="/signin" element={<SignIn />} />
+        <Route element={<WorkspaceShell />}>
+          <Route path="/start" element={<Start />} />
+          <Route path="/upload" element={<UploadDataset />} />
+          <Route path="/report" element={<ForecastReportRoute />} />
+          <Route path="/canvas" element={<Canvas />} />
+          <Route path="/playground" element={<PlanningPlayground />} />
+          <Route path="/sad" element={<SADIntake />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/start" replace />} />
       </Routes>
     </BrowserRouter>
   );

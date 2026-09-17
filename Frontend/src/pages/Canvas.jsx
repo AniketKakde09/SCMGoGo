@@ -241,13 +241,13 @@ function buildDiagram(canvasGraph, handlers, expandedEpicIds = new Set()) {
 
   // Compact dimensions are intentional: the full 171-ticket workbook should
   // have a useful overview, while clicking a node still opens the full editor.
-  const DEPTH_GAP = 250;
-  const CARD_WIDTH = 210;
-  const CARD_HEIGHT = 78;
-  const ARCH_WIDTH = 220;
-  const ARCH_HEIGHT = 88;
-  const LEAF_GAP = 18;
-  const TREE_GAP = 52;
+  const DEPTH_GAP = 330;
+  const CARD_WIDTH = 264;
+  const CARD_HEIGHT = 112;
+  const ARCH_WIDTH = 264;
+  const ARCH_HEIGHT = 112;
+  const LEAF_GAP = 32;
+  const TREE_GAP = 86;
   const ROW_STEP = CARD_HEIGHT + LEAF_GAP;
 
   const positioned = new Set();
@@ -288,7 +288,7 @@ function buildDiagram(canvasGraph, handlers, expandedEpicIds = new Set()) {
         id,
         type: "canvasEpic",
         position: { x, y },
-        data: { epic: item, issueCount: descendantCount(id), onOpen: handlers.onOpenEpic },
+        data: { epic: item, issueCount: descendantCount(id), expanded: expandedEpicIds.has(id), onOpen: handlers.onOpenEpic },
         draggable: true,
         style: { width: ARCH_WIDTH, height: ARCH_HEIGHT },
       });
@@ -335,7 +335,9 @@ function buildDiagram(canvasGraph, handlers, expandedEpicIds = new Set()) {
       nextLeafY += ROW_STEP;
     } else {
       const childYs = validChildren.map((child) => layoutSubtree(child, depth + 1, nextAncestry));
-      y = (Math.min(...childYs) + Math.max(...childYs)) / 2;
+      // Align the parent with its first child. Centering it across a tall
+      // descendant stack creates a long misleading connector trunk.
+      y = childYs[0];
     }
 
     positionById.set(id, { x: depth * DEPTH_GAP, y });
@@ -404,7 +406,6 @@ function makeHierarchyEdge(source, target) {
     target,
     type: "hierarchy",
     data: { state: "hierarchy" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#475569" },
     zIndex: 1,
   };
 }
@@ -658,14 +659,14 @@ function SadNode({ data }) {
         <span className="canvas-card-id">{sad.id}</span>
       </div>
       <div className="canvas-card-title">{sad.section_title || sad.title}</div>
-      <div className="canvas-card-meta">Section {sad.section_number || "—"} · {sad.architecture_layer || "Architecture"}</div>
+      <div className="canvas-card-meta">Section {sad.section_number || "—"} <span className="fm-card-separator">·</span> {sad.architecture_layer || "Architecture"}</div>
       <div className="canvas-card-summary">{sad.summary || "No summary available."}</div>
     </div>
   );
 }
 
 function CanvasEpicNode({ data }) {
-  const { epic, issueCount, onOpen } = data;
+  const { epic, issueCount, expanded, onOpen } = data;
   return (
     <div
       className={`canvas-architecture-card epic-canvas-card ${epic.matched ? "is-intake-matched" : ""}`}
@@ -678,8 +679,8 @@ function CanvasEpicNode({ data }) {
         <span className="canvas-card-id">{epic.id}</span>
       </div>
       <div className="canvas-card-title">{epic.title}</div>
-      <div className="canvas-card-meta">{epic.status || "—"} · {issueCount} issues</div>
-      <div className="canvas-card-meta">Priority: {epic.priority || "—"}</div>
+      <div className="canvas-card-meta">{epic.status || "Not started"} <span className="fm-card-separator">·</span> {issueCount} descendants</div>
+      <div className="fm-epic-action">{expanded ? "▾ Collapse hierarchy" : "▸ Explore hierarchy"}</div>
     </div>
   );
 }
@@ -812,7 +813,7 @@ function IssueNode({ data }) {
       )}
 
       <div className="canvas-issue-title">{issue.title}</div>
-      <div className="canvas-card-meta">{issue.status || "—"} · {issue.priority || "—"}</div>
+      <div className="canvas-card-meta">{issue.status || "Not started"} <span className="fm-card-separator">·</span> {issue.priority || "Normal priority"}</div>
     </div>
   );
 }
@@ -844,45 +845,12 @@ function DependencyEdge({
   );
 }
 
-function HierarchyEdge({
-  id,
-  source,
-  target,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  markerEnd,
-}) {
-  // Route hierarchy edges around every visible node instead of letting the
-  // default smooth-step path run through cards in the middle column.
-  const { getNodes } = useReactFlow();
-  const flowNodes = getNodes();
-  const route = buildObstacleAwareRoute(
-    source,
-    target,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    flowNodes,
-  );
-  const edgePath = route
-    .map(([x, y], index) => `${index === 0 ? "M" : "L"} ${x},${y}`)
-    .join(" ");
-
-  return (
-    <BaseEdge
-      id={id}
-      path={edgePath}
-      markerEnd={markerEnd}
-      style={{
-        stroke: "#475569",
-        strokeWidth: 2.1,
-        strokeDasharray: "none",
-      }}
-    />
-  );
+function HierarchyEdge({ id, sourceX, sourceY, targetX, targetY }) {
+  // Parent → child edges are intentionally short, orthogonal and independent.
+  // Obstacle routing made unrelated branches appear to share one long trunk.
+  const middleX = sourceX + Math.max(20, (targetX - sourceX) / 2);
+  const path = `M ${sourceX} ${sourceY} L ${middleX} ${sourceY} L ${middleX} ${targetY} L ${targetX} ${targetY}`;
+  return <BaseEdge id={id} path={path} style={{ stroke: "#8ba6c3", strokeWidth: 1.8, strokeLinejoin: "round" }} />;
 }
 
 const nodeTypes = {
@@ -1679,11 +1647,12 @@ function AskPanel({ datasetId, onClose }) {
 // Semantic Search Panel
 // =========================================================
 
-function SearchPanel({ datasetId, onClose }) {
+function SearchPanel({ datasetId, onClose, onFocusResult }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [focusMessage, setFocusMessage] = useState("");
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -1694,8 +1663,9 @@ function SearchPanel({ datasetId, onClose }) {
     setError("");
 
     try {
-      const data = await searchDataset(datasetId, q, 6);
+      const data = await searchDataset(datasetId, q, 8);
       setResults(data.results || []);
+      setFocusMessage("");
     } catch (err) {
       setError(err.message || "Search failed.");
     } finally {
@@ -1729,11 +1699,11 @@ function SearchPanel({ datasetId, onClose }) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="e.g. booking availability"
+            placeholder="Find related tickets, features or architecture…"
             autoFocus
           />
           <button type="submit" disabled={loading || !query.trim()}>
-            {loading ? "…" : "Go"}
+            {loading ? "Searching…" : "Search"}
           </button>
         </form>
 
@@ -1743,37 +1713,44 @@ function SearchPanel({ datasetId, onClose }) {
           </div>
         )}
 
+        {focusMessage && <p className="fm-focus-message" role="status">{focusMessage}</p>}
         {results && (
           <div className="search-result-list">
             {results.length === 0 && (
-              <div className="smart-empty">No matches found.</div>
+              <div className="smart-empty">No related records found. Try a ticket title, architecture topic, or a shorter phrase.</div>
             )}
 
-            {results.map((r) => (
-              <div key={r.id} className="search-result-card">
-                <div className="search-result-head">
-                  <span className="search-result-id">{r.id}</span>
-                  <span className="search-result-distance">
-                    dist {typeof r.distance === "number" ? r.distance.toFixed(3) : "—"}
-                  </span>
-                </div>
-
-                <div className="search-result-text">{r.text}</div>
-
-                {r.metadata && (
-                  <div className="search-result-meta">
-                    {Object.entries(r.metadata)
-                      .filter(([, v]) => v !== "" && v != null)
-                      .slice(0, 6)
-                      .map(([k, v]) => (
-                        <span key={k} className="meta-chip">
-                          {k}: {String(v)}
-                        </span>
-                      ))}
+            {results.map((r, index) => {
+              const meta = r.metadata || {};
+              const ticketId = meta.ticket_id || meta.sad_section_id || String(r.id || "").replace(/^ticket-/i, "");
+              const kind = meta.ticket_type || meta.type || meta.issue_type || ({ architecture: "S-AD section", backlog_item: "Backlog item", dependency: "Dependency", change_request: "Change request", team: "Team" }[meta.record_type]) || meta.record_type || "Knowledge result";
+              const raw = String(r.text || "");
+              const title = meta.title || meta.section_title || raw.match(/(?:^|\n)(?:Title|Section title|Team name|Request):\s*([^\n]+)/i)?.[1] || raw.split("\n").find((line) => line.trim()) || "Untitled work";
+              const parentId = meta.parent_id || raw.match(/(?:^|\n)Parent:\s*([^\n]+)/i)?.[1]?.trim();
+              return (
+                <article key={`${r.id}-${index}`} className="search-result-card">
+                  <div className="search-result-head">
+                    <span className="search-result-id">{ticketId || r.id}</span>
+                    <span className="fm-tag">{kind}</span>
                   </div>
-                )}
-              </div>
-            ))}
+                  <h3 className="search-result-title">{title}</h3>
+                  <div className="search-result-facts">
+                    {meta.status && <span>{meta.status}</span>}
+                    {parentId && <span>Parent {parentId}</span>}
+                    {meta.sad_section_id && <span>{meta.sad_section_id}</span>}
+                  </div>
+                  <div className="search-result-actions">
+                    <button type="button" onClick={() => {
+                      const found = onFocusResult?.(r);
+                      setFocusMessage(found ? `Focused ${ticketId || r.id} on Canvas.` : "This reference has no matching Canvas node. Its source details are available below.");
+                    }}>Focus on Canvas <span aria-hidden="true">↗</span></button>
+                    <details><summary>Source evidence</summary><p>{raw}</p>
+                      {typeof r.distance === "number" && <small>Vector distance: {r.distance.toFixed(3)} (lower indicates closer similarity; not a duplicate verdict)</small>}
+                    </details>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1903,11 +1880,30 @@ function IntakePanel({ datasetId, onClose, onResult }) {
 function FlowCanvas() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { fitView } = useReactFlow();
+  const { fitView, setCenter } = useReactFlow();
 
   const [datasetId] = useState(
     () => location.state?.datasetId || localStorage.getItem("foremanDatasetId") || "",
   );
+
+  const canvasShellRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const syncFullscreen = () => setIsFullscreen(document.fullscreenElement === canvasShellRef.current);
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement === canvasShellRef.current) await document.exitFullscreen();
+      else if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        await canvasShellRef.current?.requestFullscreen();
+      } else await canvasShellRef.current?.requestFullscreen();
+    } catch (err) {
+      setError(`Fullscreen unavailable: ${err?.message || "Browser denied the request"}`);
+    }
+  };
 
   const [datasetMeta, setDatasetMeta] = useState(null);
   const [forecast, setForecast] = useState(null);
@@ -1935,6 +1931,8 @@ function FlowCanvas() {
   const [activePanel, setActivePanel] = useState(null);
   const [jsonOutput, setJsonOutput] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [searchFocusId, setSearchFocusId] = useState(null);
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
 
   const openDetail = useCallback((type, payload) => {
     setActivePanel({ type, ...payload });
@@ -2048,26 +2046,70 @@ function FlowCanvas() {
       setNodes(diagram.nodes);
       setEdges(diagram.edges);
 
-      setTimeout(() => fitView({ padding: 0.12, duration: 500 }), 80);
+      setTimeout(() => {
+        const preferred = diagram.nodes.find((node) => node.id === String(data?.story?.id || ""))
+          || diagram.nodes.find((node) => node.type === "canvasEpic") || diagram.nodes[0];
+        if (preferred) setCenter(preferred.position.x + 160, preferred.position.y + 70, { zoom: 0.92, duration: 450 });
+      }, 80);
 
       return nextFull;
     });
-  }, [datasetId, nodeHandlers, fitView, setNodes, setEdges]);
+  }, [datasetId, nodeHandlers, setCenter, setNodes, setEdges]);
+
+  // Search results are references, not necessarily visible Flow nodes. Build a
+  // narrow, ancestry-preserving context from the full dataset before centering.
+  const handleSearchResultFocus = useCallback((result) => {
+    const graph = fullCanvasGraph;
+    if (!graph) return false;
+    const rawId = String(result?.metadata?.ticket_id || result?.metadata?.sad_section_id || result?.id || "");
+    const possibleIds = [rawId, rawId.replace(/^ticket-/i, ""), rawId.replace(/^sad-/i, "SAD-")];
+    const allItems = [...(graph.epics || []), ...(graph.issues || []), ...(graph.sad_sections || [])];
+    const target = allItems.find((item) => possibleIds.some((id) => String(item.id).toLowerCase() === id.toLowerCase()));
+    if (!target) return false;
+    const byId = new Map(allItems.map((item) => [String(item.id), item]));
+    const keep = new Set([String(target.id)]);
+    let current = target;
+    const visited = new Set();
+    while (current && !visited.has(String(current.id))) {
+      visited.add(String(current.id));
+      const parent = getIssueParentId(current) || current.sad_section_id || current.sadSectionId;
+      if (!parent || !byId.has(String(parent))) break;
+      keep.add(String(parent));
+      current = byId.get(String(parent));
+    }
+    const focused = {
+      ...graph,
+      sad_sections: (graph.sad_sections || []).filter((item) => keep.has(String(item.id))),
+      epics: (graph.epics || []).filter((item) => keep.has(String(item.id))),
+      issues: (graph.issues || []).filter((item) => keep.has(String(item.id))),
+      dependencies: (graph.dependencies || []).filter((dep) => keep.has(String(dep.source)) && keep.has(String(dep.target))),
+    };
+    const expanded = new Set((focused.epics || []).map((epic) => String(epic.id)));
+    const diagram = buildDiagram(focused, nodeHandlers, expanded);
+    setExpandedEpicIds(expanded);
+    setCanvasGraph(focused);
+    setIsFocused(true);
+    setSearchFocusId(String(target.id));
+    setNodes(diagram.nodes.map((node) => ({ ...node, selected: node.id === String(target.id) })));
+    setEdges(diagram.edges);
+    const node = diagram.nodes.find((item) => item.id === String(target.id));
+    if (node) window.requestAnimationFrame(() => setCenter(node.position.x + 150, node.position.y + 70, { zoom: 1, duration: 450 }));
+    return true;
+  }, [fullCanvasGraph, nodeHandlers, setNodes, setEdges, setCenter]);
 
   const handleBackToFullCanvas = useCallback(() => {
     if (!fullCanvasGraph) return;
 
     setCanvasGraph(fullCanvasGraph);
     setIsFocused(false);
+    setSearchFocusId(null);
 
     const diagram = buildDiagram(fullCanvasGraph, nodeHandlers);
     setNodes(diagram.nodes);
     setEdges(diagram.edges);
 
-    setTimeout(() => {
-      fitView({ padding: 0.12, duration: 400 });
-    }, 80);
-  }, [fullCanvasGraph, nodeHandlers, fitView, setNodes, setEdges]);
+    setTimeout(() => setCenter(420, 160, { zoom: 0.92, duration: 400 }), 80);
+  }, [fullCanvasGraph, nodeHandlers, setCenter, setNodes, setEdges]);
 
   const loadEverything = useCallback(async () => {
     if (!datasetId) return;
@@ -2114,7 +2156,7 @@ function FlowCanvas() {
       setEdges(diagram.edges);
 
       setTimeout(() => {
-        fitView({ padding: 0.035, minZoom: 0.03, maxZoom: 0.7, duration: 450 });
+        setCenter(420, 160, { zoom: 0.92, duration: 450 });
       }, 80);
     } catch (err) {
       setError(err.message || "Failed to load the canvas.");
@@ -2156,7 +2198,7 @@ function FlowCanvas() {
       setEdges(diagram.edges);
 
       setTimeout(() => {
-        fitView({ padding: 0.035, minZoom: 0.03, maxZoom: 0.7, duration: 450 });
+        setCenter(420, 160, { zoom: 0.92, duration: 450 });
       }, 80);
     } catch (err) {
       setError(err.message || "Forecast failed.");
@@ -2189,6 +2231,21 @@ function FlowCanvas() {
     setActivePanel((current) => (current?.type === type ? null : { type }));
   };
 
+  const handleCanvasNodeClick = useCallback((_event, node) => {
+    if (node?.type !== "canvasEpic") return;
+    const next = new Set(expandedEpicIds);
+    if (next.has(node.id)) next.delete(node.id);
+    else next.add(node.id);
+    setExpandedEpicIds(next);
+    if (!canvasGraph) return;
+    const diagram = buildDiagram(canvasGraph, nodeHandlers, next);
+    setNodes(diagram.nodes);
+    setEdges(diagram.edges);
+    window.requestAnimationFrame(() => {
+      setCenter(node.position.x + 400, node.position.y + 110, { zoom: 0.88, duration: 350 });
+    });
+  }, [expandedEpicIds, canvasGraph, nodeHandlers, setNodes, setEdges, setCenter]);
+
   // =======================================================
   // Error screen
   // =======================================================
@@ -2197,8 +2254,8 @@ function FlowCanvas() {
     return (
       <div
         style={{
-          width: "100vw",
-          height: "100vh",
+          width: "100%",
+          height: "100%",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -2268,40 +2325,55 @@ function FlowCanvas() {
   // Render
   // =======================================================
 
-  const handleCanvasNodeClick = useCallback((_event, node) => {
-    if (node?.type !== "canvasEpic") return;
-
-    setExpandedEpicIds((current) => {
-      const next = new Set(current);
-      if (next.has(node.id)) next.delete(node.id);
-      else next.add(node.id);
-
-      if (canvasGraph) {
-        const diagram = buildDiagram(canvasGraph, nodeHandlers, next);
-        setNodes(diagram.nodes);
-        setEdges(diagram.edges);
-        window.requestAnimationFrame(() => {
-          fitView({ padding: 0.06, minZoom: 0.03, maxZoom: 0.9, duration: 350 });
-        });
-      }
-      return next;
-    });
-  }, [canvasGraph, nodeHandlers, setNodes, setEdges, fitView]);
-
   return (
-    <div className="dataset-canvas-shell">
+    <div className="dataset-canvas-shell" ref={canvasShellRef}>
       <div className="dataset-canvas-topbar">
         <div className="dataset-canvas-brand">Foreman</div>
         <div className="dataset-canvas-title">
           <strong>Dataset Smart Canvas</strong>
-          <span>S-AD + Epic overview · Click an Epic to expand/collapse its full child tree.</span>
+          <span>Select an Epic to expand its hierarchy · Double-click any card to inspect.</span>
         </div>
+        {forecast?.summary && <div className="fm-header-metrics" aria-label="Delivery health">
+          <span><strong>{forecast.summary.open_tickets ?? "—"}</strong> open</span>
+          <span><strong>{forecast.summary.scheduled_points_percent ?? "—"}%</strong> scheduled</span>
+          <span className={(forecast.summary.dependency_cycles || []).length ? "fm-risk" : ""}><strong>{(forecast.summary.dependency_cycles || []).length}</strong> cycles</span>
+        </div>}
         <div className="dataset-canvas-status">
           <span className="dataset-canvas-status-dot" />
           <span>{datasetMeta?.filename || datasetId || "Dataset"}</span>
         </div>
       </div>
-      <div className="dataset-canvas-stage">
+      <div className="fm-canvas-toolbar" role="toolbar" aria-label="Canvas actions">
+        <div className="fm-toolbar-section">
+          <span className="fm-toolbar-caption">VIEW</span>
+          <button className="btn-outline-action" type="button" onClick={() => window.dispatchEvent(new Event("foreman:toggle-sidebar"))} title="Toggle navigation sidebar">☰ Sidebar</button>
+          <button className="btn-outline-action" type="button" onClick={toggleFullscreen} aria-pressed={isFullscreen} title={isFullscreen ? "Exit fullscreen (Esc)" : "Expand Canvas to fullscreen"}>{isFullscreen ? "⤢ Exit fullscreen" : "⛶ Fullscreen"}</button>
+          <button className="btn-outline-action" type="button" onClick={() => setCenter(420, 160, { zoom: 0.92, duration: 350 })}>Readable view</button>
+          <button className="btn-outline-action" type="button" onClick={() => fitView({ padding: 0.12, duration: 450, minZoom: 0.12, maxZoom: 0.9 })}>Fit entire board</button>
+          <button className={`btn-outline-action ${showDependencies ? "active" : ""}`} type="button" onClick={() => setShowDependencies((value) => !value)} aria-pressed={showDependencies}>Dependencies {showDependencies ? "on" : "off"}</button>
+          {isFocused && <button className="btn-outline-action fm-reset-focus" type="button" onClick={handleBackToFullCanvas}>← Full board</button>}
+        </div>
+        <div className="fm-toolbar-section fm-toolbar-primary">
+          <button className="btn-outline-action" type="button" onClick={() => togglePanel("search")}>⌕ Search</button>
+          <button className="btn-outline-action" type="button" onClick={() => togglePanel("ask")}>Ask Foreman</button>
+          <button className="btn-primary-action" type="button" onClick={() => togglePanel("intake")}>+ New request</button>
+          <div className="fm-more-wrap">
+            <button className="btn-outline-action" type="button" aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen((value) => !value)}>More ⋯</button>
+            {moreActionsOpen && <div className="fm-more-menu">
+              <button type="button" onClick={() => { setMoreActionsOpen(false); handleRerunForecast(); }}>↻ Re-run forecast</button>
+              <button type="button" disabled={!forecast} onClick={() => { setMoreActionsOpen(false); navigate("/report", { state: { datasetId, report: forecast } }); }}>Forecast report</button>
+              <button type="button" onClick={() => { setMoreActionsOpen(false); navigate("/playground", { state: { datasetId } }); }}>Planning Playground</button>
+              <button type="button" onClick={() => { setMoreActionsOpen(false); handleReingest(); }}>Re-ingest dataset</button>
+              <button type="button" disabled={!forecast} onClick={() => { setMoreActionsOpen(false); setJsonOutput(JSON.stringify(forecast, null, 2)); }}>View forecast JSON</button>
+              <button type="button" onClick={() => { setMoreActionsOpen(false); navigate("/upload"); }}>Change dataset</button>
+            </div>}
+          </div>
+        </div>
+      </div>
+      {loading && <div className="fm-context-banner" role="status">{loadingLabel}</div>}
+      {searchFocusId && <div className="fm-context-banner" role="status">Focused on <strong>{searchFocusId}</strong> · Relevant parent hierarchy only <button type="button" onClick={handleBackToFullCanvas}>Show full board</button></div>}
+      <div className="fm-canvas-body">
+      <div className={`dataset-canvas-stage ${activePanel ? "fm-panel-visible" : ""}`}>
       <ReactFlow
         nodes={nodes}
         edges={visibleEdges}
@@ -2312,10 +2384,9 @@ function FlowCanvas() {
         edgeTypes={edgeTypes}
         connectionMode={ConnectionMode.Loose}
         nodesConnectable={false}
-        minZoom={0.03}
+        minZoom={0.12}
         maxZoom={2}
-        fitView
-        fitViewOptions={{ padding: 0.035, minZoom: 0.03, maxZoom: 0.7 }}
+        defaultViewport={{ x: 72, y: 65, zoom: 0.92 }}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Lines} color="#E2E8F0" gap={28} size={1} />
@@ -2342,157 +2413,9 @@ function FlowCanvas() {
           </div>
         </Panel>
 
-        <Panel position="top-left">
-          {forecast && !loading && (
-            <div
-              className="summary-strip"
-              onClick={() => setJsonOutput(JSON.stringify(forecast, null, 2))}
-              title="Click to view the raw forecast JSON"
-            >
-              <div className="summary-stat">
-                <div className="summary-stat-value">{forecast.summary.teams}</div>
-                <div className="summary-stat-label">Teams</div>
-              </div>
 
-              <div className="summary-stat">
-                <div className="summary-stat-value">{forecast.summary.open_tickets}</div>
-                <div className="summary-stat-label">Open Tickets</div>
-              </div>
 
-              <div className="summary-stat">
-                <div className="summary-stat-value">
-                  {forecast.summary.scheduled_points_percent}%
-                </div>
-                <div className="summary-stat-label">Scheduled</div>
-              </div>
 
-              <div className="summary-stat">
-                <div className="summary-stat-value">
-                  {(forecast.summary.dependency_cycles || []).length}
-                </div>
-                <div className="summary-stat-label">Cycles</div>
-              </div>
-            </div>
-          )}
-        </Panel>
-
-        <Panel position="top-right" className="panel-actions">
-          {datasetMeta && (
-            <div className="dataset-chip">
-              <span className="dot" />
-              <strong>{datasetMeta.filename || datasetId}</strong>
-            </div>
-          )}
-
-          {isFocused && (
-            <div className="dataset-chip" title="Showing only the tickets/architecture matched by your last intake query">
-              <span className="dot" style={{ background: "#2563EB" }} />
-              <strong>Intake results</strong>
-              <button
-                className="btn-outline-action"
-                style={{ marginLeft: 8, padding: "2px 10px" }}
-                onClick={handleBackToFullCanvas}
-              >
-                ← Full canvas
-              </button>
-            </div>
-          )}
-
-          {loading && (
-            <div
-              style={{
-                background: "#FFFFFF",
-                border: "1px solid #E2E8F0",
-                borderRadius: "8px",
-                padding: "8px 12px",
-                fontSize: "12px",
-                color: "#475569",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
-              }}
-            >
-              <span
-                style={{
-                  width: "8px",
-                  height: "8px",
-                  borderRadius: "50%",
-                  background: "#2563EB",
-                  animation: "pulse 1.2s infinite",
-                }}
-              />
-              {loadingLabel}
-            </div>
-          )}
-
-          {!loading && (
-            <>
-              <button
-                className="btn-outline-action canvas-overview-action"
-                onClick={() => fitView({ padding: 0.035, minZoom: 0.03, maxZoom: 0.7, duration: 450 })}
-                title="Fit the complete hierarchy into the current screen"
-              >
-                ⛶ Fit all
-              </button>
-
-              <button
-                className={`btn-outline-action canvas-overview-action ${showDependencies ? "active" : ""}`}
-                onClick={() => setShowDependencies((value) => !value)}
-                title="Toggle dependency/blocking relationships without changing the hierarchy"
-              >
-                {showDependencies ? "⇢ Dependencies on" : "⇢ Dependencies"}
-              </button>
-
-              <button className="btn-outline-action" onClick={handleReingest}>
-                ↻ Re-ingest
-              </button>
-
-              <button className="btn-outline-action" onClick={handleRerunForecast}>
-                📊 Re-run Forecast
-              </button>
-
-              <button
-                className="btn-outline-action"
-                onClick={() =>
-                  navigate("/report", { state: { datasetId, report: forecast } })
-                }
-                disabled={!forecast}
-              >
-                📄 Forecast Report
-              </button>
-
-              <button
-                className={`btn-primary-action ${activePanel?.type === "ask" ? "active" : ""}`}
-                onClick={() => togglePanel("ask")}
-              >
-                💬 Ask
-              </button>
-
-              <button
-                className={`btn-outline-action ${activePanel?.type === "search" ? "active" : ""}`}
-                onClick={() => togglePanel("search")}
-              >
-                🔍 Search
-              </button>
-
-              <button
-                className={`btn-outline-action ${activePanel?.type === "intake" ? "active" : ""}`}
-                onClick={() => togglePanel("intake")}
-              >
-                📥 Intake
-              </button>
-
-              <button className="btn-outline-action" onClick={() => navigate("/playground", { state: { datasetId } })}>
-                ✦ Planning Playground
-              </button>
-
-              <button className="btn-outline-action" onClick={() => navigate("/start")}>
-                Change Dataset
-              </button>
-            </>
-          )}
-        </Panel>
       </ReactFlow>
       </div>
 
@@ -2506,7 +2429,7 @@ function FlowCanvas() {
       )}
 
       {activePanel?.type === "search" && (
-        <SearchPanel datasetId={datasetId} onClose={() => setActivePanel(null)} />
+        <SearchPanel datasetId={datasetId} onFocusResult={handleSearchResultFocus} onClose={() => setActivePanel(null)} />
       )}
 
       {activePanel?.type === "intake" && (
@@ -2517,6 +2440,7 @@ function FlowCanvas() {
         />
       )}
 
+      </div>
       {jsonOutput && (
         <div className="json-modal-backdrop" onClick={() => setJsonOutput(null)}>
           <div className="json-modal" onClick={(e) => e.stopPropagation()}>

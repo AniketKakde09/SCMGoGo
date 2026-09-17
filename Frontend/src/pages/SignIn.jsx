@@ -9,9 +9,6 @@ function SignIn() {
 
     // TODO: Add real authentication here
 
-    localStorage.removeItem("foremanDatasetId");
-    localStorage.removeItem("foremanDatasetName");
-
     navigate("/start");
   };
 
@@ -38,46 +35,12 @@ function SignIn() {
           </h1>
 
           <p className="auth-subtitle">
-            Sign in to continue to your Foreman knowledge workspace.
+            Explore Foreman using the synthetic hackathon dataset. This demo does not authenticate users.
           </p>
         </div>
 
-        <form
-          className="auth-form"
-          onSubmit={handleSignIn}
-        >
-          <div className="auth-field">
-            <label className="auth-label">
-              Email address
-            </label>
-
-            <input
-              className="auth-input"
-              type="email"
-              placeholder="you@company.com"
-              required
-            />
-          </div>
-
-          <div className="auth-field">
-            <label className="auth-label">
-              Password
-            </label>
-
-            <input
-              className="auth-input"
-              type="password"
-              placeholder="Enter your password"
-              required
-            />
-          </div>
-
-          <button
-            className="auth-button"
-            type="submit"
-          >
-            Sign In
-          </button>
+        <form className="auth-form" onSubmit={handleSignIn}>
+          <button className="auth-button" type="submit">Open demo workspace</button>
         </form>
 
         <div className="auth-footer">
