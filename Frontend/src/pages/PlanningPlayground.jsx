@@ -57,7 +57,7 @@ function WorkNode({ data, selected }) {
   const count = data.childCount || 0;
   return <div className={`pg-node pg-node-${TYPE_CLASS[data.type] || "note"} ${selected ? "is-selected" : ""}`}>
     <Handle type="target" position={Position.Left} />
-    <div className="pg-node-top"><span className="pg-node-type">{data.type}</span>{count > 0 && <span className="pg-child-count">{count} items</span>}<span className={`pg-state ${data.jiraKey ? "created" : data.analysis ? "review" : "draft"}`}>{data.jiraKey ? `✓ ${data.jiraKey}` : data.publishStatus === "syncing" ? "◌ Creating" : data.publishStatus === "failed" ? "✕ Failed" : data.analysis ? "Reviewed" : "Draft"}</span></div>
+    <div className="pg-node-top"><span className="pg-node-type">{data.type}</span>{count > 0 && <button type="button" className="pg-child-count pg-branch-toggle nodrag nopan" aria-label={`${data.branchCollapsed ? "Expand" : "Collapse"} children of ${data.title}`} aria-expanded={!data.branchCollapsed} onClick={(event) => { event.stopPropagation(); data.onToggleBranch?.(); }}>{data.branchCollapsed ? "▸" : "▾"} {count} items</button>}<span className={`pg-state ${data.jiraKey ? "created" : data.analysis ? "review" : "draft"}`}>{data.jiraKey ? `✓ ${data.jiraKey}` : data.publishStatus === "syncing" ? "◌ Creating" : data.publishStatus === "failed" ? "✕ Failed" : data.analysis ? "Reviewed" : "Draft"}</span></div>
     <strong>{data.title || "Untitled work item"}</strong>
     {data.parentTitle ? <small>↳ {data.parentTitle}</small> : data.sprint ? <small>{data.sprint}</small> : <small>Unscheduled</small>}
     {data.jiraKey && jiraLink(data.jiraKey) ? <a className="pg-jira-link" href={jiraLink(data.jiraKey)} target="_blank" rel="noopener noreferrer" onClick={(event)=>event.stopPropagation()}>Open {data.jiraKey} in Jira ↗</a> : null}
@@ -78,10 +78,14 @@ const asDistance = (v) => v === null || v === undefined || v === "" ? null : Num
 
 function PlaygroundInner() {
   const navigate = useNavigate();
-  const { fitView } = useReactFlow();
+  const { fitView, setCenter } = useReactFlow();
   const [typeFilter, setTypeFilter] = useState("All");
   const [searchText, setSearchText] = useState("");
   const [focusMode, setFocusMode] = useState(false);
+  const [collapsedBranches, setCollapsedBranches] = useState(() => new Set());
+  const [spotlight, setSpotlight] = useState(true);
+  const [motionEnabled, setMotionEnabled] = useState(() => !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+  const [showMinimap, setShowMinimap] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
   const location = useLocation();
@@ -434,8 +438,66 @@ function PlaygroundInner() {
     for (const n of matches) { let cursor = n; const seen = new Set(); while (cursor?.data.parentId && !seen.has(cursor.id)) { seen.add(cursor.id); ids.add(cursor.data.parentId); cursor = nodes.find(x => x.id === cursor.data.parentId); } }
     return ids;
   }, [nodes, typeFilter, searchText]);
-  const displayedNodes = useMemo(() => nodes.filter(n => visibleIds.has(n.id)).map(n => ({...n, data: {...n.data, childCount: nodes.filter(child => child.data.parentId === n.id).length}})), [nodes, visibleIds]);
-  const displayedEdges = useMemo(() => edges.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target)), [edges, visibleIds]);
+  // Collapsing a branch changes presentation only; no work items or relationships are deleted.
+  const canvasIds = useMemo(() => {
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    return new Set([...visibleIds].filter(id => {
+      let parent = byId.get(id)?.data?.parentId;
+      const seen = new Set([id]);
+      while (parent && byId.has(parent) && !seen.has(parent)) {
+        if (collapsedBranches.has(parent)) return false;
+        seen.add(parent);
+        parent = byId.get(parent)?.data?.parentId;
+      }
+      return true;
+    }));
+  }, [nodes, visibleIds, collapsedBranches]);
+  const spotlightIds = useMemo(() => {
+    if (!selectedId || !spotlight) return null;
+    const connected = new Set([selectedId]);
+    const queue = [selectedId];
+    // One-hop relationship spotlight: parents, children and explicit dependencies.
+    for (const edge of edges) if (edge.source === selectedId || edge.target === selectedId) {
+      connected.add(edge.source); connected.add(edge.target);
+    }
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    let parent = byId.get(selectedId)?.data?.parentId;
+    while (parent && byId.has(parent) && !connected.has(parent)) {
+      connected.add(parent); parent = byId.get(parent)?.data?.parentId;
+    }
+    return connected;
+  }, [selectedId, spotlight, nodes, edges]);
+  const toggleBranch = useCallback(id => setCollapsedBranches(previous => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  }), []);
+  const displayedNodes = useMemo(() => nodes.filter(n => canvasIds.has(n.id)).map(n => ({
+    ...n,
+    className: spotlightIds && !spotlightIds.has(n.id) ? "pg-dimmed" : "pg-spotlit",
+    data: { ...n.data, childCount: nodes.filter(child => child.data.parentId === n.id).length,
+      branchCollapsed: collapsedBranches.has(n.id), onToggleBranch: () => toggleBranch(n.id) },
+  })), [nodes, canvasIds, spotlightIds, collapsedBranches, toggleBranch]);
+  const displayedEdges = useMemo(() => edges.filter(e => canvasIds.has(e.source) && canvasIds.has(e.target)).map(e => ({
+    ...e, animated: Boolean(motionEnabled && spotlightIds && spotlightIds.has(e.source) && spotlightIds.has(e.target)),
+    className: spotlightIds && !(spotlightIds.has(e.source) && spotlightIds.has(e.target)) ? "pg-edge-dimmed" : "pg-edge-active",
+    style: { ...e.style, strokeWidth: spotlightIds?.has(e.source) && spotlightIds?.has(e.target) ? 2.8 : 1.7 },
+  })), [edges, canvasIds, spotlightIds, motionEnabled]);
+  const focusSelection = useCallback(() => {
+    const node = nodes.find(n => n.id === selectedId);
+    if (!node) return;
+    setCollapsedBranches(previous => {
+      const next = new Set(previous);
+      const byId = new Map(nodes.map(n => [n.id, n]));
+      let parent = node.data.parentId;
+      const seen = new Set();
+      while (parent && byId.has(parent) && !seen.has(parent)) {
+        seen.add(parent); next.delete(parent); parent = byId.get(parent)?.data?.parentId;
+      }
+      return next;
+    });
+    setCenter(node.position.x + 135, node.position.y + 55, { zoom: 1, duration: motionEnabled ? 500 : 0 });
+  }, [nodes, selectedId, setCenter, motionEnabled]);
   const exportExcel = async () => {
     if (!nodes.length || exportBusy) return;
     setExportBusy(true);
@@ -513,7 +575,7 @@ function PlaygroundInner() {
 
   return <div className={`pg-shell ${focusMode ? "pg-focus-mode" : ""}`}>
     <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button type="button" onClick={() => setFocusMode(value => !value)} title="Toggle distraction-free planning">{focusMode ? "Exit focus" : "Focus mode"}</button><button type="button" onClick={exportExcel} disabled={exportBusy || !nodes.length}>{exportBusy ? "Exporting…" : "↓ Export Excel"}</button><button className="pg-bulk-create" disabled={publishBusy || !nodes.some((n)=>n.data.type!=="Note" && !n.data.jiraKey)} onClick={openPublishReview}>{publishBusy ? "Creating tickets…" : `Review & publish (${nodes.filter((n)=>n.data.type!=="Note" && !n.data.jiraKey).length})`}</button><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
-    <div className="pg-studio-controls"><div className="pg-filters">{["All", "Epic", "Feature", "Story", "Task", "Duplicates"].map(type => <button key={type} className={typeFilter === type ? "active" : ""} onClick={() => setTypeFilter(type)}>{type === "All" ? "All" : type === "Duplicates" ? "Needs duplicate review" : `${type}s`} <b>{type === "All" ? nodes.length : type === "Duplicates" ? nodes.filter(n => needsDuplicateReview(n.data)).length : counts[type]}</b></button>)}</div><div className="pg-view-actions"><input aria-label="Search work items" placeholder="Search work items…" value={searchText} onChange={e => setSearchText(e.target.value)}/><button onClick={arrange}>Organize layout</button><button onClick={() => fitView({padding: 0.12, duration: 400})}>Fit view</button><span>Hierarchy view</span></div></div>
+    <div className="pg-studio-controls"><div className="pg-filters">{["All", "Epic", "Feature", "Story", "Task", "Duplicates"].map(type => <button key={type} className={typeFilter === type ? "active" : ""} onClick={() => setTypeFilter(type)}>{type === "All" ? "All" : type === "Duplicates" ? "Needs duplicate review" : `${type}s`} <b>{type === "All" ? nodes.length : type === "Duplicates" ? nodes.filter(n => needsDuplicateReview(n.data)).length : counts[type]}</b></button>)}</div><div className="pg-view-actions"><input aria-label="Search work items" placeholder="Search work items…" value={searchText} onChange={e => setSearchText(e.target.value)}/><button onClick={arrange}>Organize layout</button><button type="button" onClick={() => setCollapsedBranches(new Set(nodes.filter(n => nodes.some(child => child.data.parentId === n.id)).map(n => n.id)))} disabled={!nodes.length}>Collapse branches</button><button type="button" onClick={() => setCollapsedBranches(new Set())} disabled={!collapsedBranches.size}>Expand all</button><button type="button" onClick={focusSelection} disabled={!selectedId}>Focus selection</button><button type="button" aria-pressed={spotlight} onClick={() => setSpotlight(v => !v)}>{spotlight ? "Spotlight on" : "Spotlight off"}</button><button type="button" aria-pressed={motionEnabled} onClick={() => setMotionEnabled(v => !v)}>{motionEnabled ? "Motion on" : "Motion off"}</button><button type="button" aria-pressed={showMinimap} onClick={() => setShowMinimap(v => !v)}>{showMinimap ? "Hide map" : "Show map"}</button><button onClick={() => fitView({padding: 0.12, duration: 400})}>Fit view</button><span>Hierarchy view</span></div></div>
     <div className="pg-toolbar"><button type="button" onClick={() => setShowComposer(value => !value)} aria-expanded={showComposer}>{showComposer ? "− Hide quick add" : "+ Add work item"}</button><div className={`pg-compose-fields ${showComposer ? "is-open" : ""}`}><select value={newType} onChange={(e)=>setNewType(e.target.value)}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select><input value={title} onChange={(e)=>setTitle(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addNode()} placeholder="Describe a work item…"/><button className="primary" onClick={addNode}>+ Add to canvas</button></div><span className="pg-link-label">Arrow:</span><select value={relationMode} onChange={(e)=>setRelationMode(e.target.value)} title="Auto maps valid Epic → Feature → Story/Task arrows as hierarchy"><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select><span className="pg-tip">Draw arrows to map hierarchy or dependencies · Draft → Analyze → Review → Create</span></div>
     {publishReviewOpen && <div className="pg-review-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setPublishReviewOpen(false); }}>
       <section className="pg-review-dialog" role="dialog" aria-modal="true" aria-labelledby="pg-review-title">
@@ -531,7 +593,7 @@ function PlaygroundInner() {
     {bulkProgress && <div className="pg-bulk-progress" role="status"><strong>Jira creation · {bulkProgress.completed}/{bulkProgress.total}</strong><span>✓ {bulkProgress.created} created · ✕ {bulkProgress.failed} failed</span><progress value={bulkProgress.completed} max={bulkProgress.total} />{bulkProgress.jobId && <small>Job {bulkProgress.jobId}</small>}</div>}
     {notice && <div className="pg-notice">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
     <main className="pg-main"><section className="pg-canvas">{nodes.length===0&&<div className="pg-empty"><div className="pg-empty-icon">✦</div><h2>Your planning space is empty</h2><p>Add work, arrange it visually, then let Foreman compare drafts with the existing backlog before publishing.</p><div className="pg-empty-hints"><span>Epic → Feature → Story</span><span>Duplicate check</span><span>Dependencies</span><span>Human approval</span></div></div>}
-      <ReactFlow nodes={displayedNodes} edges={displayedEdges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>setSelectedId(n.id)} onPaneClick={()=>setSelectedId(null)} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding:0.18, minZoom:0.65, maxZoom:1 }} minZoom={.2} maxZoom={1.8} defaultEdgeOptions={{ style:{ strokeWidth:1.7 } }} proOptions={{hideAttribution:true}}><Background variant={BackgroundVariant.Dots} gap={24} size={1}/><MiniMap pannable zoomable nodeColor={n => ({Epic:"#8b5cf6",Feature:"#2563eb",Story:"#0d9488",Task:"#f97316"}[n.data.type] || "#64748b")}/><Controls/></ReactFlow></section>
+      <ReactFlow className={motionEnabled ? "pg-motion-on" : "pg-motion-off"} nodes={displayedNodes} edges={displayedEdges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>setSelectedId(n.id)} onPaneClick={()=>setSelectedId(null)} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding:0.18, minZoom:0.65, maxZoom:1 }} minZoom={.2} maxZoom={1.8} defaultEdgeOptions={{ style:{ strokeWidth:1.7 } }} proOptions={{hideAttribution:true}}><Background variant={BackgroundVariant.Dots} gap={24} size={1}/>{showMinimap && <MiniMap pannable zoomable nodeColor={n => ({Epic:"#8b5cf6",Feature:"#2563eb",Story:"#0d9488",Task:"#f97316"}[n.data.type] || "#64748b")}/>}<Controls/></ReactFlow></section>
       <aside className={`pg-inspector ${selectedNode?"open":""}`}>{selectedNode ? <>
         <div className="pg-inspector-head"><div><span>{selectedNode.data.jiraKey ? "Created ticket" : "Draft work item"}</span><strong>{selectedNode.data.type} · {selectedNode.data.title}</strong><small>{nodes.filter(n => n.data.parentId === selectedId).length} direct children</small></div><button onClick={()=>setSelectedId(null)}>×</button></div>
         <label>Type<select value={selectedNode.data.type} disabled={Boolean(selectedNode.data.jiraKey)} onChange={(e)=>updateSelected({type:e.target.value,parentId:"",parentTitle:""})}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select></label>
