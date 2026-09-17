@@ -3,17 +3,9 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies and build
-COPY package*.json ./
-RUN npm ci --quiet
 COPY . .
-RUN npm run build
+RUN npm install
 
-# Production stage: serve static files with nginx
-FROM nginx:stable-alpine
-# Remove default nginx html and copy built assets
-RUN rm -rf /usr/share/nginx/html/*
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Expose port 80
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Expose port 5173
+EXPOSE 5173
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

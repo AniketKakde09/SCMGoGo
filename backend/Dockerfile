@@ -19,12 +19,11 @@ RUN apt-get update \
        curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install (use the API-specific requirements)
-COPY requirements-api.txt requirements.txt ./
-RUN pip install --no-cache-dir -r requirements-api.txt
-
 # Copy the application code
 COPY . .
+
+# Copy requirements and install (use the API-specific requirements)
+RUN pip install --no-cache-dir -r requirements-api.txt
 
 # Default datasets dir (mounted from host via docker-compose)
 ENV FOREMAN_DATASETS_DIR=/app/datasets
