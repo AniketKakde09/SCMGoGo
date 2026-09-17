@@ -486,6 +486,25 @@ function PlaygroundInner() {
     } catch (error) { setNotice(error.message || "Excel export failed."); }
     finally { setExportBusy(false); }
   };
+  const [publishReviewOpen, setPublishReviewOpen] = useState(false);
+  const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
+  const pendingReview = nodes.filter(node => node.data.type !== "Note" && !node.data.jiraKey);
+  const reviewById = new Map(nodes.map(node => [node.id, node]));
+  const reviewIssues = pendingReview.map(node => {
+    const missing = missingFor(node.data);
+    const parent = reviewById.get(node.data.parentId);
+    if (parent && parent.data.type !== PARENT_TYPE[node.data.type]) missing.push("valid parent type");
+    if (node.data.parentId && !parent && !node.data.parentJiraKey) missing.push("confirmed parent reference");
+    if (needsDuplicateReview(node.data)) missing.push("duplicate review");
+    return { id: node.id, title: node.data.title || "Untitled", type: node.data.type, missing };
+  });
+  const reviewBlocked = reviewIssues.filter(issue => issue.missing.length);
+  const openPublishReview = () => { setReviewAcknowledged(false); setPublishReviewOpen(true); };
+  const confirmPublishReview = () => {
+    if (!reviewAcknowledged || reviewBlocked.length || publishBusy) return;
+    setPublishReviewOpen(false);
+    publishAll();
+  };
   const arrange = () => { setNodes(current => layoutHierarchy(current)); window.setTimeout(() => fitView({padding: 0.12, duration: 450}), 50); };
   const duplicate = selectedNode?.data?.duplicate?.confidence === "high" || (selectedNode?.data?.analysis && selectedNode?.data?.duplicate?.distance != null && asDistance(selectedNode.data.duplicate.distance) <= DUPLICATE_HIGH) ? selectedNode?.data?.duplicate : null;
   const distance = asDistance(duplicate?.distance);
@@ -493,9 +512,22 @@ function PlaygroundInner() {
   const readinessMissing = selectedNode ? missingFor(selectedNode.data) : [];
 
   return <div className={`pg-shell ${focusMode ? "pg-focus-mode" : ""}`}>
-    <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button type="button" onClick={() => setFocusMode(value => !value)} title="Toggle distraction-free planning">{focusMode ? "Exit focus" : "Focus mode"}</button><button type="button" onClick={exportExcel} disabled={exportBusy || !nodes.length}>{exportBusy ? "Exporting…" : "↓ Export Excel"}</button><button className="pg-bulk-create" disabled={publishBusy || !nodes.some((n)=>n.data.type!=="Note" && !n.data.jiraKey)} onClick={publishAll}>{publishBusy ? "Creating tickets…" : `Create all tickets (${nodes.filter((n)=>n.data.type!=="Note" && !n.data.jiraKey).length})`}</button><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
+    <header className="pg-topbar"><button className="pg-brand" onClick={() => navigate("/start")}>Foreman</button><div className="pg-title-wrap"><strong>Planning Playground</strong><span>Plan freely · Foreman checks context · you decide what reaches Jira</span></div><div className="pg-dataset-state"><span className={datasetId ? "on" : "off"}></span>{datasetId ? "Backlog intelligence connected" : "No dataset connected"}</div><div className="pg-actions"><button type="button" onClick={() => setFocusMode(value => !value)} title="Toggle distraction-free planning">{focusMode ? "Exit focus" : "Focus mode"}</button><button type="button" onClick={exportExcel} disabled={exportBusy || !nodes.length}>{exportBusy ? "Exporting…" : "↓ Export Excel"}</button><button className="pg-bulk-create" disabled={publishBusy || !nodes.some((n)=>n.data.type!=="Note" && !n.data.jiraKey)} onClick={openPublishReview}>{publishBusy ? "Creating tickets…" : `Review & publish (${nodes.filter((n)=>n.data.type!=="Note" && !n.data.jiraKey).length})`}</button><button onClick={restoreBoard}>Restore</button><button onClick={saveBoard}>Save draft</button><button className="danger" onClick={clearBoard}>Clear</button></div></header>
     <div className="pg-studio-controls"><div className="pg-filters">{["All", "Epic", "Feature", "Story", "Task", "Duplicates"].map(type => <button key={type} className={typeFilter === type ? "active" : ""} onClick={() => setTypeFilter(type)}>{type === "All" ? "All" : type === "Duplicates" ? "Needs duplicate review" : `${type}s`} <b>{type === "All" ? nodes.length : type === "Duplicates" ? nodes.filter(n => needsDuplicateReview(n.data)).length : counts[type]}</b></button>)}</div><div className="pg-view-actions"><input aria-label="Search work items" placeholder="Search work items…" value={searchText} onChange={e => setSearchText(e.target.value)}/><button onClick={arrange}>Organize layout</button><button onClick={() => fitView({padding: 0.12, duration: 400})}>Fit view</button><span>Hierarchy view</span></div></div>
     <div className="pg-toolbar"><button type="button" onClick={() => setShowComposer(value => !value)} aria-expanded={showComposer}>{showComposer ? "− Hide quick add" : "+ Add work item"}</button><div className={`pg-compose-fields ${showComposer ? "is-open" : ""}`}><select value={newType} onChange={(e)=>setNewType(e.target.value)}>{TYPES.map((t)=><option key={t}>{t}</option>)}</select><input value={title} onChange={(e)=>setTitle(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addNode()} placeholder="Describe a work item…"/><button className="primary" onClick={addNode}>+ Add to canvas</button></div><span className="pg-link-label">Arrow:</span><select value={relationMode} onChange={(e)=>setRelationMode(e.target.value)} title="Auto maps valid Epic → Feature → Story/Task arrows as hierarchy"><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select><span className="pg-tip">Draw arrows to map hierarchy or dependencies · Draft → Analyze → Review → Create</span></div>
+    {publishReviewOpen && <div className="pg-review-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setPublishReviewOpen(false); }}>
+      <section className="pg-review-dialog" role="dialog" aria-modal="true" aria-labelledby="pg-review-title">
+        <div className="pg-review-heading"><div><span className="pg-review-eyebrow">FOREMAN / JIRA</span><h2 id="pg-review-title">Review & publish</h2><p>Preview the plan before anything is written to Jira.</p></div><button type="button" aria-label="Close publish review" onClick={()=>setPublishReviewOpen(false)}>×</button></div>
+        <div className="pg-review-metrics"><div><strong>{reviewIssues.length}</strong><span>Drafts to create</span></div><div><strong>{reviewBlocked.length}</strong><span>Need attention</span></div><div><strong>{nodes.filter(n=>n.data.jiraKey).length}</strong><span>Already linked</span></div></div>
+        <h3>Project capability checklist</h3>
+        <p className="pg-review-muted">Capabilities below are not verified against your Jira project. Foreman must discover project metadata and permissions before it can promise support.</p>
+        <div className="pg-review-capabilities"><span>Issue types and required fields <b>Not verified</b></span><span>Epic / Feature mapping <b>Not verified</b></span><span>Sprints and custom fields <b>Not verified</b></span><span>Issue links and permissions <b>Not verified</b></span></div>
+        <h3>Draft readiness</h3>
+        <div className="pg-review-list">{reviewIssues.map(issue=><div key={issue.id} className="pg-review-item"><div><small>{issue.type}</small><strong>{issue.title}</strong></div><span className={issue.missing.length ? "pg-review-bad" : "pg-review-good"}>{issue.missing.length ? issue.missing.join(", ") : "Ready locally"}</span></div>)}</div>
+        <label className="pg-review-confirm"><input type="checkbox" checked={reviewAcknowledged} onChange={event=>setReviewAcknowledged(event.target.checked)}/> I understand this creates issues in Jira and project capabilities have not been independently verified here.</label>
+        <div className="pg-review-footer"><button type="button" onClick={exportExcel} disabled={exportBusy || !nodes.length}>Export Excel instead</button><button type="button" onClick={()=>setPublishReviewOpen(false)}>Back to canvas</button><button className="pg-bulk-create" type="button" onClick={confirmPublishReview} disabled={!reviewAcknowledged || reviewBlocked.length>0 || publishBusy}>Continue to Jira confirmation</button></div>
+      </section>
+    </div>}
     {bulkProgress && <div className="pg-bulk-progress" role="status"><strong>Jira creation · {bulkProgress.completed}/{bulkProgress.total}</strong><span>✓ {bulkProgress.created} created · ✕ {bulkProgress.failed} failed</span><progress value={bulkProgress.completed} max={bulkProgress.total} />{bulkProgress.jobId && <small>Job {bulkProgress.jobId}</small>}</div>}
     {notice && <div className="pg-notice">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
     <main className="pg-main"><section className="pg-canvas">{nodes.length===0&&<div className="pg-empty"><div className="pg-empty-icon">✦</div><h2>Your planning space is empty</h2><p>Add work, arrange it visually, then let Foreman compare drafts with the existing backlog before publishing.</p><div className="pg-empty-hints"><span>Epic → Feature → Story</span><span>Duplicate check</span><span>Dependencies</span><span>Human approval</span></div></div>}
