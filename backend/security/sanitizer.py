@@ -10,8 +10,10 @@ most common sensitive values and reports the active method in the result.
 """
 
 import re
+import uuid
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 try:
@@ -47,6 +49,14 @@ PII_ENTITIES = [
     "IN_VOTER",
     "IP_ADDRESS",
 ]
+
+# Technical and Agile terms that spaCy/Presidio frequently misidentifies as PERSON.
+# These will be explicitly filtered out from PII masking.
+EXCLUDED_PERSON_TERMS = {
+    "sad", "api", "ui", "ux", "jira", "epic", "story", "feature", 
+    "task", "bug", "subtask", "kanban", "scrum", "backlog", "sprint"
+}
+JIRA_KEY_PATTERN = re.compile(r"\b[A-Z]+-\d+\b")
 
 
 @dataclass
@@ -109,52 +119,91 @@ FALLBACK_PII_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
 
 @lru_cache(maxsize=1)
 def _presidio_engines():
-    """Create Presidio engines once per worker, lazily.
-
-    Presidio's AnalyzerEngine loads the configured NLP engine/model. Lazy
-    initialization keeps application startup fast and lets the regex fallback
-    work when the optional NLP model is not installed yet.
-    """
+    """Create Presidio engines once per worker, lazily."""
     if not _PRESIDIO_IMPORTS_AVAILABLE:
         return None, None
     return AnalyzerEngine(), AnonymizerEngine()
 
 
-def _presidio_sanitize(text: str) -> tuple[str, list[str]]:
-    analyzer, anonymizer = _presidio_engines()
-    if analyzer is None or anonymizer is None:
-        return text, []
+def _get_unique_placeholder(entity_type: str, mapping: dict[str, str], original_value: str) -> str:
+    """Generate or retrieve a unique placeholder per unique entity value with a UUID hex snippet."""
+    key = f"{entity_type}:{original_value}"
+    if key not in mapping:
+        unique_id = uuid.uuid4().hex[:6]
+        mapping[key] = f"<{entity_type}_{unique_id}>"
+    return mapping[key]
 
-    results = analyzer.analyze(
-        text=text,
-        entities=PII_ENTITIES,
-        language="en",
-        score_threshold=0.45,
+
+def sanitize_text(text: Any) -> SanitizationResult:
+    """Sanitize user/dataset text with unique IDs, filtering out false-positive technical terms."""
+    original = "" if text is None else str(text)
+    if not original:
+        return SanitizationResult(text="", changed=False, method="none")
+
+    method = "regex-fallback"
+    spans: list[tuple[int, int, str]] = []  # (start, end, entity_type)
+    pii_categories: set[str] = set()
+    analyzer, _ = _presidio_engines()
+
+    if analyzer is not None:
+        try:
+            results = analyzer.analyze(
+                text=original,
+                entities=PII_ENTITIES,
+                language="en",
+                score_threshold=0.45,
+            )
+            if results:
+                method = "presidio+regex-secrets"
+                for res in results:
+                    matched_value = original[res.start:res.end]
+                    cleaned_val_lower = matched_value.strip().lower()
+
+                    # Filter out false-positive PERSON detections for Jira keys, SAD, Epics, Stories, etc.
+                    if res.entity_type == "PERSON":
+                        if JIRA_KEY_PATTERN.match(matched_value) or cleaned_val_lower in EXCLUDED_PERSON_TERMS:
+                            continue
+                        # Ignore single-character 'names' or obvious non-name artifacts
+                        if len(matched_value.strip()) <= 1:
+                            continue
+
+                    spans.append((res.start, res.end, res.entity_type))
+                    pii_categories.add(res.entity_type)
+        except Exception:
+            method = "regex-fallback-after-presidio-error"
+
+    # Fallback / additional regex patterns
+    for category, pattern, _ in FALLBACK_PII_PATTERNS:
+        for match in pattern.finditer(original):
+            start, end = match.span()
+            # Avoid overlaps with existing presidio spans
+            if not any(s <= start < e or s < end <= e for s, e, _ in spans):
+                spans.append((start, end, category))
+                pii_categories.add(category)
+
+    # Sort spans in reverse order of start index to safely replace from back to front
+    spans.sort(key=lambda x: x[0], reverse=True)
+
+    placeholder_mapping: dict[str, str] = {}
+    working_text = original
+
+    for start, end, entity_type in spans:
+        matched_value = working_text[start:end]
+        placeholder = _get_unique_placeholder(entity_type, placeholder_mapping, matched_value)
+        working_text = working_text[:start] + placeholder + working_text[end:]
+
+    # Run secret sanitization (deterministic regex boundary)
+    final_text, secret_categories = _secret_sanitize(working_text)
+
+    categories = sorted(list(pii_categories) + secret_categories)
+    return SanitizationResult(
+        text=final_text,
+        changed=final_text != original,
+        pii_detected=bool(pii_categories),
+        secrets_detected=bool(secret_categories),
+        method=method,
+        categories=categories,
     )
-    if not results:
-        return text, []
-
-    operators = {
-        entity: OperatorConfig("replace", {"new_value": f"<{entity}>"})
-        for entity in PII_ENTITIES
-    }
-    output = anonymizer.anonymize(
-        text=text,
-        analyzer_results=results,
-        operators=operators,
-    )
-    categories = sorted({result.entity_type for result in results})
-    return output.text, categories
-
-
-def _regex_sanitize(text: str) -> tuple[str, list[str]]:
-    sanitized = text
-    categories: list[str] = []
-    for category, pattern, replacement in FALLBACK_PII_PATTERNS:
-        sanitized, count = pattern.subn(replacement, sanitized)
-        if count:
-            categories.append(category)
-    return sanitized, categories
 
 
 def _secret_sanitize(text: str) -> tuple[str, list[str]]:
@@ -165,45 +214,6 @@ def _secret_sanitize(text: str) -> tuple[str, list[str]]:
         if count:
             categories.append(category)
     return sanitized, categories
-
-
-def sanitize_text(text: Any) -> SanitizationResult:
-    """Sanitize user/dataset text before search, RAG, intake or an LLM."""
-    original = "" if text is None else str(text)
-    if not original:
-        return SanitizationResult(text="", changed=False, method="none")
-
-    pii_safe = original
-    pii_categories: list[str] = []
-    method = "regex-fallback"
-
-    if _PRESIDIO_IMPORTS_AVAILABLE:
-        try:
-            pii_safe, pii_categories = _presidio_sanitize(original)
-            method = "presidio+regex-secrets"
-        except Exception:
-            # Fail closed for the PII boundary: if Presidio is installed but
-            # its NLP model is unavailable/misconfigured, continue with the
-            # deterministic patterns instead of passing raw data downstream.
-            pii_safe, pii_categories = _regex_sanitize(original)
-            method = "regex-fallback-after-presidio-error"
-    else:
-        pii_safe, pii_categories = _regex_sanitize(original)
-
-    # Always run the deterministic fallback after Presidio. This catches
-    # application-specific Indian identifiers and fills recognizer gaps.
-    fallback_safe, fallback_categories = _regex_sanitize(pii_safe)
-    final_text, secret_categories = _secret_sanitize(fallback_safe)
-
-    categories = sorted(set(pii_categories + fallback_categories + secret_categories))
-    return SanitizationResult(
-        text=final_text,
-        changed=final_text != original,
-        pii_detected=bool(pii_categories or fallback_categories),
-        secrets_detected=bool(secret_categories),
-        method=method,
-        categories=categories,
-    )
 
 
 def sanitize_dataframe(df):
@@ -222,7 +232,6 @@ def _is_missing(value: Any) -> bool:
         return bool(pd.isna(value))
     except Exception:
         return value is None
-
 
 
 def sanitize_response_payload(value: Any) -> tuple[Any, list[str]]:
@@ -246,6 +255,7 @@ def sanitize_response_payload(value: Any) -> tuple[Any, list[str]]:
             categories.extend(found)
         return output, categories
     return value, categories
+
 
 def security_status() -> dict[str, Any]:
     presidio_ready = False

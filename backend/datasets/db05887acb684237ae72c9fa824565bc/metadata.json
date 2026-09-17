@@ -1,9 +1,0 @@
-{
-  "dataset_id": "db05887acb684237ae72c9fa824565bc",
-  "filename": "Foreman_Synthetic_Dataset.xlsx",
-  "status": "ingesting",
-  "created_at": "2026-09-15T20:12:52.124677+00:00",
-  "updated_at": "2026-09-15T20:12:52.331266+00:00",
-  "collection_name": "foreman_db05887acb684237ae72c9fa824565bc",
-  "error": null
-}

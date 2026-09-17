@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 from fastapi import HTTPException
 from llm import LLMClient
+from security import sanitize_text, sanitize_dataframe
 
 MAX_BYTES = 8 * 1024 * 1024
 MAX_CHARS = 70000
@@ -385,7 +386,14 @@ def _reconcile_hierarchy(llm, staged):
     return output
 
 def generate_proposal(text: str, excel_path: Path, document_title: str):
-    text = text.strip()
+    # Security boundary: sanitize SAD content before parsing/chunking or any LLM call.
+    sanitized_sad = sanitize_text(text)
+    text = sanitized_sad.text.strip()
+
+    # Prevent PII/secrets in the document title from reaching the response.
+    sanitized_title = sanitize_text(document_title)
+    document_title = sanitized_title.text.strip()
+
     if len(text) < 60:
         raise HTTPException(422, 'Provide at least 60 characters of architecture content')
     if len(text) > MAX_CHARS:
@@ -426,6 +434,8 @@ def generate_proposal(text: str, excel_path: Path, document_title: str):
         raise HTTPException(422, f'Consolidated SAD exceeds {MAX_TICKETS} draft tickets; no partial proposal was returned')
     try:
         backlog = pd.read_excel(excel_path, sheet_name='Backlog').fillna('')
+        # Defense in depth: ingest should already sanitize the workbook.
+        backlog = sanitize_dataframe(backlog)
     except Exception as exc:
         logger.exception('Unable to read SAD duplicate-check dataset')
         raise HTTPException(422, 'Unable to read the dataset Backlog sheet for duplicate screening') from exc
@@ -434,6 +444,10 @@ def generate_proposal(text: str, excel_path: Path, document_title: str):
         item['review_status'] = 'potential_duplicate' if item['duplicate_candidates'] else 'new_proposal'
     return {
         'document_title': document_title,
+        'security': {
+            'input_sanitized': sanitized_sad.changed,
+            'categories_detected': sanitized_sad.categories,
+        },
         'sections': [{'id': s['id'], 'title': s['title']} for s in sections],
         'tickets': staged,
         'coverage': [{'section_id': s['id'], 'title': s['title'],
