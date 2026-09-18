@@ -1,0 +1,134 @@
+/* One visual language across Scrum Master GOGO. Presentation only: API and planning logic untouched. */
+:root{
+  --bg-canvas:#f4f7fc;
+  --surface-white:#fff;
+  --surface-group:#f0f5fd99;
+  --border-subtle:#e2eaf4;
+  --border-strong:#cddbf0;
+  --text-primary:#152845;
+  --text-secondary:#61748f;
+  --text-muted:#91a1b8;
+  --primary-accent:#315de8;
+  --primary-accent-hover:#244ad5;
+  --epic-dark-bg:#142a50;
+  --epic-dark-border:#36527f;
+  --story-border-accent:#4778f0;
+  --status-success:#13ae94;
+  --fm-surface:#fff;
+  --fm-blue:#315de8;
+  --fm-cyan:#0eb8d0;
+  --fm-mint:#13ae94;
+  --fm-violet:#8863d4;
+  --fm-ink:#152845;
+  --fm-muted:#667b95;
+  --fm-border:#e1e9f4;
+  --fm-radius:14px;
+}
+html,body,#root{width:100%;height:100%;margin:0;overflow:hidden;font-family:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;color:#152845;background:#f4f7fc;-webkit-font-smoothing:antialiased}
+.fm-app-shell button,.fm-app-shell input,.fm-app-shell select,.fm-app-shell textarea{font-family:inherit}
+.fm-app-shell button:not(:disabled),.fm-app-shell a{ -webkit-tap-highlight-color:transparent }
+.fm-app-shell :is(button,a,input,select,textarea):focus-visible{outline:3px solid #76a0ff;outline-offset:2px}
+::selection{background:#d6e7ff;color:#143c79}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#bdcce1;border-radius:999px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#95a9c7;background-clip:padding-box}
+::-webkit-scrollbar-track{background:transparent}
+
+/* Overview: immersive hero, quieter cards, consistent typography. */
+.fm-app-shell .fm-home{background:radial-gradient(ellipse at top right,#dceaff65,transparent 45%),#f4f7fc;padding:clamp(16px,2vw,30px) clamp(16px,3vw,46px) 48px}
+.fm-app-shell .fm-home-hero{background:linear-gradient(113deg,#101f43,#17416d 72%,#166b90);border-radius:19px;box-shadow:0 16px 40px #123b6f21;min-height:238px}
+.fm-app-shell .fm-home-kicker{color:#68dce0;letter-spacing:.155em}
+.fm-app-shell .fm-home-hero h2{font-size:clamp(25px,2.6vw,36px);letter-spacing:-.052em;font-weight:850}
+.fm-app-shell .fm-home-hero p{color:#cbdbef}
+.fm-app-shell .fm-home-primary{background:#dffff0;color:#154965;border-color:#dffff0;box-shadow:0 4px 15px #061d3c22}
+.fm-app-shell .fm-home-secondary{border-color:#88b4d877;background:#ffffff0b}
+.fm-app-shell .fm-home-dataset,.fm-app-shell .fm-home-journey-card,.fm-app-shell .fm-home-footnote{border-color:var(--fm-border);border-radius:14px;box-shadow:0 4px 20px #1e46740b;background:#fff}
+.fm-app-shell .fm-home-journey-card{transition:transform .2s,box-shadow .2s,border-color .2s}
+.fm-app-shell .fm-home-journey-card:hover{transform:translateY(-3px);box-shadow:0 12px 30px #1d3f7520;border-color:#c3d5f2}
+.fm-app-shell .fm-home-card-icon,.fm-app-shell .fm-home-dataset-symbol{background:linear-gradient(145deg,#ebf1ff,#e7faf8);color:#315de8;border-radius:12px}
+.fm-app-shell .fm-home-journey-card button{color:#315de8}
+.fm-app-shell .fm-home-section-title h3{color:#1b3558;letter-spacing:-.025em}
+.fm-app-shell .fm-home-dataset-actions button,.fm-app-shell .fm-home-footnote button{border-color:#cdddf2;color:#315de8;border-radius:9px}
+.fm-app-shell .fm-home-dataset-actions button:hover,.fm-app-shell .fm-home-footnote button:hover{background:#f0f5ff}
+
+/* Workbook & S-AD intake: harmonize controls and surfaces, preserve layout and behavior. */
+.fm-app-shell .auth-page{background:radial-gradient(ellipse at 90% -20%,#e1efff 0%,transparent 58%),#f4f7fc}
+.fm-app-shell .auth-card,.fm-app-shell .sad-panel{border-color:#e0e9f4;border-radius:18px;background:#fff;box-shadow:0 11px 38px #162f5b10}
+.fm-app-shell .auth-title,.fm-app-shell .sad-intro h2{color:#183454;letter-spacing:-.045em}
+.fm-app-shell .auth-badge,.fm-app-shell .sad-eyebrow{color:#315de8}
+.fm-app-shell .auth-button,.fm-app-shell .sad-submit{background:#315de8;border-color:#315de8;color:white;border-radius:10px;box-shadow:0 5px 14px #315de824}
+.fm-app-shell .auth-button:not(:disabled):hover,.fm-app-shell .sad-submit:not(:disabled):hover{background:#244ad5}
+.fm-app-shell .sad-page{height:100%;min-height:0;overflow-y:auto;max-width:1050px;padding:26px clamp(16px,3vw,35px) 45px;color:#1b3356}
+.fm-app-shell .sad-upload{border-color:#b4c9e8;border-radius:13px;background:linear-gradient(155deg,#f5f8ff,#f6fffd)}
+.fm-app-shell .sad-switch button{border-color:#dbe6f5;background:#f2f6fc;color:#627796;border-radius:9px}
+.fm-app-shell .sad-switch button.active{background:#315de8;border-color:#315de8;color:#fff}
+.fm-app-shell .sad-panel :is(input,textarea):focus-visible{outline:3px solid #8ab0ff;outline-offset:2px}
+
+/* Estimation & delivery reporting share the same high-contrast canvas. */
+.fm-app-shell .est-page,.fm-app-shell .fr-page{background:radial-gradient(ellipse at 85% -45%,#e0eafe,transparent 55%),#f4f7fc;color:#172e4e}
+.fm-app-shell .est-summary-card,.fm-app-shell .est-table-card,.fm-app-shell .est-legend-card,.fm-app-shell .fr-panel{background:#fff;border-color:#e2eaf5;border-radius:14px;box-shadow:0 4px 17px #1d3e7010}
+.fm-app-shell .est-submit-button,.fm-app-shell .fr-button-primary{background:#315de8;border-color:#315de8;color:#fff}
+.fm-app-shell .fr-header{border-color:#e3eaf5}.fm-app-shell .fr-title{color:#183455;letter-spacing:-.04em}
+.fm-app-shell .fr-page{height:100%;min-height:0;overflow-y:auto}
+.fm-app-shell .fr-button,.fm-app-shell .fr-input,.fm-app-shell .fr-chip-button{border-radius:9px}
+
+/* Graph workspaces: unify chrome; preserve semantics, React Flow gestures and node status colors. */
+.fm-app-shell .pg-shell{background:#f4f7fc;color:#172c4b}
+.fm-app-shell .pg-topbar,.fm-app-shell .pg-toolbar,.fm-app-shell .pg-studio-controls{background:#fff;border-color:#e2eaf5}
+.fm-app-shell .pg-title-wrap strong{color:#152e50;letter-spacing:-.03em}
+.fm-app-shell .pg-canvas{background:radial-gradient(circle,#d7e3f2 0.8px,transparent 0.8px) 0 0/22px 22px,#f7f9fe}
+.fm-app-shell .pg-node{border-radius:13px;box-shadow:0 5px 16px #21395c15}
+.fm-app-shell .pg-node.is-selected{outline-color:#315de8}
+.fm-app-shell .pg-inspector{border-color:#e1e9f4;background:#fff}
+.fm-app-shell .pg-toolbar .primary,.fm-app-shell .pg-filters button.active{background:#315de8;border-color:#315de8;color:#fff}
+.fm-app-shell .pg-clean-header .pg-actions .pg-bulk-create{background:#1b3970;border-color:#1b3970;color:white}
+.fm-app-shell .dataset-canvas-stage{background:#f7f9fe}
+.fm-app-shell .fm-toolbar-primary,.fm-app-shell .btn-primary-action{background:#315de8;border-color:#315de8;color:#fff}
+.fm-app-shell .smart-node-panel{border-color:#e2e9f4}
+.fm-app-shell .search-result-card{border-color:#e2eaf5;border-radius:12px}
+
+/* Coherent small interactions without forced large-scale motion. */
+.fm-app-shell :is(.fm-home-primary,.fm-home-secondary,.fm-home-journey-card button,.sad-submit,.auth-button,.est-submit-button,.fr-button-primary):not(:disabled){transition:transform .2s,background-color .2s,box-shadow .2s}
+.fm-app-shell :is(.fm-home-primary,.fm-home-secondary,.fm-home-journey-card button,.sad-submit,.auth-button,.est-submit-button,.fr-button-primary):not(:disabled):hover{transform:translateY(-1px)}
+@media (prefers-reduced-motion:reduce){.fm-app-shell *, .fm-app-shell *::before,.fm-app-shell *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+/* Sign-in is outside WorkspaceShell, so give its entrance the same palette. */
+.auth-page{background:radial-gradient(ellipse at 80% 5%,#d9eaff77,transparent 55%),linear-gradient(150deg,#f5f8fe,#eaf2fd)}
+.auth-page .auth-card{border:1px solid #e0e9f4;border-radius:20px;box-shadow:0 24px 65px #16376518;background:#fff}
+.auth-page .auth-logo{background:linear-gradient(145deg,#315de8,#0eb8d0);color:#fff;border-radius:14px}
+.auth-page .auth-title{color:#193453;letter-spacing:-.04em}
+.auth-page .auth-button{background:#315de8;border-color:#315de8;border-radius:10px;color:#fff}
+.auth-page .auth-button:hover{background:#244ad5}
+
+/* Scrum Master GOGO brand layer — derived from supplied SG/SMGG logo. */
+:root{
+  --gogo-navy:#0F172A;
+  --gogo-slate:#1E293B;
+  --gogo-sky:#38BDF8;
+  --gogo-ice:#F8FAFC;
+  --gogo-sky-soft:#E0F2FE;
+  --gogo-line:#CBD5E1;
+  --primary-accent:var(--gogo-sky);
+  --primary-accent-hover:#0EA5E9;
+  --fm-blue:var(--gogo-sky);
+  --fm-cyan:var(--gogo-sky);
+  --fm-ink:var(--gogo-navy);
+}
+.fm-app-shell .fm-brand-mark{background:transparent!important;box-shadow:none!important;overflow:hidden;border-radius:12px}
+.fm-app-shell .fm-brand-mark img{display:block;width:100%;height:100%;object-fit:cover}
+.fm-app-shell .fm-brand-text strong{color:var(--gogo-ice)}
+.fm-app-shell .fm-brand-text small{color:#94A3B8}
+.fm-app-shell .fm-app-sidebar{background:linear-gradient(180deg,var(--gogo-slate),var(--gogo-navy))!important}
+.fm-app-shell .fm-nav-item.is-active{background:#38BDF819!important;color:var(--gogo-ice)!important}
+.fm-app-shell .fm-nav-item.is-active .fm-nav-icon{color:var(--gogo-sky)!important}
+.fm-app-shell .fm-global-actions>button,.fm-app-shell .fm-toolbar-primary,.fm-app-shell .btn-primary-action{background:var(--gogo-sky)!important;border-color:var(--gogo-sky)!important;color:var(--gogo-navy)!important;font-weight:750}
+.fm-app-shell .fm-home{background:radial-gradient(ellipse at top right,#38BDF81c,transparent 45%),#F8FAFC}
+.fm-app-shell .fm-home-hero{background:linear-gradient(115deg,var(--gogo-slate),var(--gogo-navy) 70%,#123047)!important;box-shadow:0 18px 42px #0F172A22}
+.fm-app-shell .fm-home-kicker{color:var(--gogo-sky)!important}
+.fm-app-shell .fm-home-primary{background:var(--gogo-sky)!important;border-color:var(--gogo-sky)!important;color:var(--gogo-navy)!important}
+.fm-home-logo-mark{display:flex!important;align-items:center;justify-content:center;background:transparent!important}
+.fm-home-logo-mark img{width:min(210px,80%);height:auto;border-radius:28px;box-shadow:0 20px 45px #02061755}
+.auth-page{background:radial-gradient(ellipse at 80% 5%,#38BDF82b,transparent 55%),linear-gradient(150deg,#F8FAFC,#E2E8F0)!important}
+.auth-page .auth-logo-image{padding:0!important;background:transparent!important;overflow:hidden}
+.auth-page .auth-logo-image img{display:block;width:100%;height:100%;object-fit:cover}
+.auth-page .auth-button{background:var(--gogo-sky)!important;border-color:var(--gogo-sky)!important;color:var(--gogo-navy)!important;font-weight:750}
+.auth-page .auth-button:hover{background:#0EA5E9!important}

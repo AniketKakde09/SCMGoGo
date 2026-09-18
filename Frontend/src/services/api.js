@@ -284,3 +284,9 @@ export function reviewStory(datasetId, payload) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   });
 }
+// Batch semantic review for all generated S-AD tickets; does not create Jira issues.
+export function reviewTicketBatch(datasetId, payload) {
+  return request(`/api/planning/stories/datasets/${encodeURIComponent(datasetId)}/review-batch`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+}

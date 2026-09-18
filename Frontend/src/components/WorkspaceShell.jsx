@@ -1,84 +1,99 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { getHealth } from "../services/api";
+import ForemanIcon from "./ForemanIcon";
 import "./WorkspaceShell.css";
 
 const NAV = [
-  { to: "/start", icon: "⌂", label: "Overview", description: "Workspace home" },
-  { to: "/upload", icon: "▤", label: "Knowledge base", description: "Upload & connect" },
-  { to: "/canvas", icon: "◇", label: "Delivery Canvas", description: "Explore work" },
-  { to: "/sad", icon: "▤", label: "Add SAD", description: "Generate architecture backlog" },
-  { to: "/playground", icon: "▧", label: "Planning studio", description: "Review & publish" },
-  { to: "/estimation", icon: "◎", label: "Estimation", description: "Estimate team backlog" },
-  { to: "/report", icon: "▥", label: "Forecast", description: "Capacity & delivery" },
+  { to: "/start", icon: "home", label: "Overview", description: "Delivery command center" },
+  { to: "/upload", icon: "database", label: "Knowledge base", description: "Your source of truth" },
+  { to: "/canvas", icon: "network", label: "Delivery Canvas", description: "See connected work" },
+  { to: "/sad", icon: "file", label: "S-AD intake", description: "Turn architecture into work" },
+  { to: "/playground", icon: "layers", label: "Planning studio", description: "Review & publish safely" },
+  { to: "/capacity", icon: "calendar", label: "Capacity Studio", description: "Availability & scenarios", isNew: true },
+  { to: "/estimation", icon: "gauge", label: "Estimation", description: "Size the backlog" },
+  { to: "/report", icon: "chart", label: "Forecast", description: "Delivery outlook" },
 ];
+const canNavigate = () => window.dispatchEvent(new Event("foreman:before-navigate", { cancelable: true }));
 const PAGE = {
-  "/start": ["Overview", "Your delivery intelligence workspace"],
-  "/upload": ["Knowledge base", "Connect the synthetic delivery dataset"],
+  "/start": ["Overview", "Your intelligent delivery workspace"],
+  "/upload": ["Knowledge base", "Connect and manage delivery knowledge"],
   "/canvas": ["Delivery Canvas", "Explore your backlog and architecture"],
-  "/sad": ["Add SAD", "Generate traceable work and review overlaps"],
-  "/playground": ["Planning studio", "Human-owned changes and review"],
-  "/estimation" : [ "Estimation", "Collaborative team ticket estimation"],
+  "/sad": ["S-AD intake", "Generate traceable work and review overlaps"],
+  "/playground": ["Planning studio", "Human-owned changes and safe review"],
+  "/capacity": ["Capacity Studio", "People, availability and what-if planning"],
+  "/estimation": ["Estimation", "Collaborative team ticket estimation"],
   "/report": ["Forecast", "Capacity, velocity and delivery outlook"],
 };
 
 export default function WorkspaceShell() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("foremanSidebarCollapsed") === "true");
+  const [health, setHealth] = useState("checking");
+  const [datasetName, setDatasetName] = useState(() => localStorage.getItem("foremanDatasetName") || "No dataset connected");
+
   useEffect(() => {
-    const toggle = () => setCollapsed(value => { const next = !value; localStorage.setItem("foremanSidebarCollapsed", String(next)); return next; });
+    const toggle = () => setCollapsed(previous => {
+      const next = !previous;
+      localStorage.setItem("foremanSidebarCollapsed", String(next));
+      return next;
+    });
     window.addEventListener("foreman:toggle-sidebar", toggle);
     return () => window.removeEventListener("foreman:toggle-sidebar", toggle);
   }, []);
-  const [health, setHealth] = useState("checking");
-  const [datasetName, setDatasetName] = useState(() => localStorage.getItem("foremanDatasetName") || "No dataset selected");
   useEffect(() => {
-    let mounted = true;
-    getHealth().then(() => { if (mounted) setHealth("connected"); }).catch(() => { if (mounted) setHealth("offline"); });
-    return () => { mounted = false; };
+    let active = true;
+    setHealth("checking");
+    getHealth().then(() => { if (active) setHealth("connected"); }).catch(() => { if (active) setHealth("offline"); });
+    return () => { active = false; };
   }, [location.pathname]);
   useEffect(() => {
-    setOpen(false);
-    setDatasetName(localStorage.getItem("foremanDatasetName") || "No dataset selected");
+    setMobileOpen(false);
+    setDatasetName(localStorage.getItem("foremanDatasetName") || "No dataset connected");
   }, [location.pathname]);
+
   const [title, subtitle] = PAGE[location.pathname] || PAGE["/start"];
-  return (
-    <div className={`fm-app-shell ${collapsed ? "fm-sidebar-collapsed" : ""}`}>
-      {open && <button className="fm-mobile-scrim" aria-label="Close navigation" onClick={() => setOpen(false)} />}
-      <aside className={`fm-app-sidebar ${open ? "is-open" : ""}`} aria-label="Workspace navigation">
-        <button className="fm-brand" type="button" onClick={() => navigate("/start")} title="Foreman home">
-          <span className="fm-brand-mark">GOGO<span></span></span>
-          <span><strong></strong><small>SCRUM MASTER</small></span>
+  const toggleCollapsed = () => setCollapsed(previous => {
+    const next = !previous;
+    localStorage.setItem("foremanSidebarCollapsed", String(next));
+    return next;
+  });
+
+  return <div className={`fm-app-shell ${collapsed ? "fm-sidebar-collapsed" : ""}`}>
+    {mobileOpen && <button className="fm-mobile-scrim" type="button" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
+    <aside className={`fm-app-sidebar ${mobileOpen ? "is-open" : ""}`} aria-label="Workspace navigation">
+      <button className="fm-brand" type="button" onClick={() => { if (canNavigate()) navigate("/start"); }} title="Gogo home">
+        <span className="fm-brand-mark" aria-hidden="true"><img src="/gogo-logo.svg" alt="" /></span>
+        <span className="fm-brand-text"><strong>GOGO</strong><small>Scrum Master</small></span>
+      </button>
+      <div className="fm-nav-caption">YOUR WORKSPACE</div>
+      <nav className="fm-app-nav">
+        {NAV.map(item => <NavLink key={item.to} to={item.to} title={item.label} onClick={event => { if (!canNavigate()) event.preventDefault(); }} className={({ isActive }) => `fm-nav-item ${isActive ? "is-active" : ""}`}>
+          <span className="fm-nav-icon"><ForemanIcon name={item.icon} size={18} /></span>
+          <span className="fm-nav-copy"><strong>{item.label}</strong><small>{item.description}</small></span>
+          {item.isNew && <span className="fm-nav-new">NEW</span>}
+        </NavLink>)}
+      </nav>
+      <div className="fm-sidebar-bottom">
+        <span className="fm-nav-caption">CONNECTED KNOWLEDGE</span>
+        <button type="button" className="fm-dataset-tile" onClick={() => { if (canNavigate()) navigate("/upload"); }} title={datasetName}>
+          <ForemanIcon name="database" size={17}/><span>{datasetName}</span><ForemanIcon name="arrowUpRight" size={14}/>
         </button>
-        <button className="fm-sidebar-collapse" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => { setCollapsed(value => { const next = !value; localStorage.setItem("foremanSidebarCollapsed", String(next)); return next; }); }}>
-          {collapsed ? "»" : "«"}<span>{collapsed ? "" : " Collapse navigation"}</span>
-        </button>
-        <div className="fm-nav-caption">WORKSPACE</div>
-        <nav className="fm-app-nav">
-          {NAV.map((item) => <NavLink key={item.to} to={item.to} title={item.label} className={({ isActive }) => `fm-nav-item ${isActive ? "is-active" : ""}`}>
-            <span className="fm-nav-icon" aria-hidden="true">{item.icon}</span>
-            <span className="fm-nav-copy"><strong>{item.label}</strong><small>{item.description}</small></span>
-            <span className="fm-nav-chevron" aria-hidden="true">›</span>
-          </NavLink>)}
-        </nav>
-        <div className="fm-sidebar-bottom">
-          <span className="fm-nav-caption">ACTIVE KNOWLEDGE</span>
-          <button type="button" className="fm-dataset-tile" onClick={() => navigate("/upload")} title={datasetName}>
-            <span aria-hidden="true">▤</span><span>{datasetName}</span>
-          </button>
-          <small>Planning workspace · Synthetic data only</small>
-        </div>
-      </aside>
-      <div className="fm-main-shell">
-        <header className="fm-global-header">
-          <button className="fm-menu-toggle" type="button" aria-label="Open navigation" onClick={() => setOpen(true)}>☰</button>
-          <div className="fm-global-heading"><span className="fm-breadcrumb">WORKSPACE&nbsp; / &nbsp;{title.toUpperCase()}</span><h1>{title}</h1><p>{subtitle}</p></div>
-          <div className="fm-global-actions"><span className={`fm-api-status ${health}`}><i />API {health === "connected" ? "connected" : health === "offline" ? "unavailable" : "checking"}</span><button type="button" onClick={() => navigate("/upload")}>+ Connect data</button></div>
-        </header>
-        <main className="fm-workspace-content"><Outlet /></main>
+        <span className="fm-trust-note"><ForemanIcon name="shield" size={13}/> Human-owned decisions</span>
       </div>
+      <button className="fm-sidebar-collapse" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={toggleCollapsed}>
+        <ForemanIcon name={collapsed ? "chevronRight" : "chevronLeft"} size={15}/><span>{collapsed ? "Expand" : "Collapse"}</span>
+      </button>
+    </aside>
+    <div className="fm-main-shell">
+      <header className="fm-global-header">
+        <button className="fm-menu-toggle" type="button" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><ForemanIcon name="menu" size={20}/></button>
+        <div className="fm-global-heading"><span className="fm-breadcrumb">WORKSPACE <ForemanIcon name="chevronRight" size={12}/> {title.toUpperCase()}</span><h1>{title}</h1><p>{subtitle}</p></div>
+        <div className="fm-global-actions"><span className={`fm-api-status ${health}`} title={`API ${health}`}><i/>{health === "connected" ? "Systems online" : health === "offline" ? "API unavailable" : "Connecting"}</span><button type="button" onClick={() => { if (canNavigate()) navigate("/upload"); }}><ForemanIcon name="plus" size={15}/> Connect data</button></div>
+      </header>
+      <main className="fm-workspace-content"><Outlet/></main>
     </div>
-  );
+  </div>;
 }

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Foreman Knowledge — Frontend
 
 A React + Vite + React Flow frontend, restyled from the original
@@ -48,7 +47,6 @@ Start the backend separately, per `README_API.md`:
 pip install -r requirements-api.txt
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
-=======
 # Foreman Knowledge — Frontend
 
 A React + Vite + React Flow frontend, restyled from the original
@@ -98,4 +96,3 @@ Start the backend separately, per `README_API.md`:
 pip install -r requirements-api.txt
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
->>>>>>> 8f8f438d40454b02272722833222e398ef7c591b

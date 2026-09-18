@@ -22,6 +22,7 @@ from canvas import build_canvas_graph
 from jira_sync import router as jira_router
 from story_intelligence import router as story_router
 from smart_sprint import router as smart_sprint_router
+from capacity_studio import router as capacity_studio_router
 from security import sanitize_response_payload, sanitize_text, security_status
 from sad_workflow import extract_document, generate_proposal, MAX_BYTES
 from estimation import build_estimation_workspace
@@ -49,6 +50,7 @@ app.add_middleware(
 app.include_router(jira_router)
 app.include_router(story_router)
 app.include_router(smart_sprint_router)
+app.include_router(capacity_studio_router)
 
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1)
