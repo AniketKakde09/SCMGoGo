@@ -16,14 +16,14 @@ function SignIn() {
     <div className="auth-page">
 
       <div className="foreman-watermark">
-        Foreman<span>Knowledge</span>
+        GOGO<span>Scrum Master</span>
       </div>
 
       <div className="auth-card">
 
         <div className="auth-header">
-          <div className="auth-logo">
-            FK
+          <div className="auth-logo auth-logo-image">
+            <img src="/gogo-logo.svg" alt="Scrum Master GOGO" />
           </div>
 
           <div className="auth-badge">
@@ -35,7 +35,7 @@ function SignIn() {
           </h1>
 
           <p className="auth-subtitle">
-            Explore Foreman using the synthetic hackathon dataset. This demo does not authenticate users.
+            Explore GOGO using the synthetic dataset. This demo does not authenticate users.
           </p>
         </div>
 
@@ -44,7 +44,7 @@ function SignIn() {
         </form>
 
         <div className="auth-footer">
-          Foreman Knowledge API · v1.0
+          Scrum Master GOGO · Delivery Intelligence
         </div>
 
       </div>

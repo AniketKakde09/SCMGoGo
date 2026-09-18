@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getDatasetStatus } from "../services/api";
 import "./Start.css";
+import ForemanIcon from "../components/ForemanIcon";
 
 const JOURNEY = [
   { step: "01", icon: "▤", title: "Connect knowledge", text: "Ingest the synthetic workbook, architecture sections and existing backlog.", route: "/upload", action: "Manage dataset" },
   { step: "02", icon: "◇", title: "Explore delivery", text: "Inspect traceability and dependencies, search existing work and clarify new demand.", route: "/canvas", action: "Open Canvas", needsDataset: true },
   { step: "03", icon: "▧", title: "Refine & review", text: "Build a change proposal and inspect suggested hierarchy before publishing.", route: "/playground", action: "Open Planning studio" },
-  { step: "04", icon: "▥", title: "Forecast delivery", text: "Review the capacity-based sprint forecast and download its report.", route: "/report", action: "View forecast", needsDataset: true },
+  { step: "04", icon: "calendar", title: "Shape team capacity", text: "Collect availability and explore safe what-if plans for two sprints.", route: "/capacity", action: "Open Capacity Studio", needsDataset: true },
+  { step: "05", icon: "chart", title: "Forecast delivery", text: "Review the capacity-based sprint forecast and download its report.", route: "/report", action: "View forecast", needsDataset: true },
 ];
 
 export default function Start() {
@@ -55,7 +57,7 @@ export default function Start() {
           <button className="fm-home-secondary" type="button" onClick={() => navigate("/playground")}>Open Planning studio</button>
         </div>
       </div>
-      <div className="fm-home-hero-mark" aria-hidden="true"><span>GOGO</span><i /><i /><i /></div>
+      <div className="fm-home-hero-mark fm-home-logo-mark" aria-hidden="true"><img src="/gogo-logo.svg" alt="" /></div>
     </section>
     <section className="fm-home-dataset" aria-label="Active dataset">
       <div className="fm-home-dataset-main">
@@ -68,10 +70,10 @@ export default function Start() {
       </div>
     </section>
     {error && <p className="fm-home-error" role="alert">{error}</p>}
-    <div className="fm-home-section-title"><div><span className="fm-home-kicker">YOUR WORKFLOW</span><h3>One connected delivery workspace</h3></div><span>Four steps · Human-owned decisions</span></div>
-    <section className="fm-home-journey" aria-label="Foreman workflow">
+    <div className="fm-home-section-title"><div><span className="fm-home-kicker">YOUR WORKFLOW</span><h3>One connected delivery workspace</h3></div><span>Five steps · Human-owned decisions</span></div>
+    <section className="fm-home-journey" aria-label="GOGO workflow">
       {JOURNEY.map((item) => <article className="fm-home-journey-card" key={item.step}>
-        <div className="fm-home-card-head"><span>{item.step}</span><span className="fm-home-card-icon" aria-hidden="true">{item.icon}</span></div>
+        <div className="fm-home-card-head"><span>{item.step}</span><span className="fm-home-card-icon" aria-hidden="true">{item.icon === "calendar" || item.icon === "chart" ? <ForemanIcon name={item.icon} size={22}/> : item.icon}</span></div>
         <h4>{item.title}</h4><p>{item.text}</p>
         <button type="button" disabled={item.needsDataset && status !== "ready"} onClick={() => navigate(item.route)}>{item.action} <span aria-hidden="true">→</span></button>
       </article>)}

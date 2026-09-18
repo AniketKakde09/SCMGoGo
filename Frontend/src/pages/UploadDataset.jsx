@@ -143,7 +143,7 @@ function UploadDataset() {
     <div className="auth-page">
 
       <div className="foreman-watermark">
-        Foreman<span>Knowledge</span>
+        GOGO<span>Knowledge</span>
       </div>
 
       <div className="auth-card auth-card-wide">

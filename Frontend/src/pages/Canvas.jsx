@@ -1530,7 +1530,7 @@ function DetailPanel({ panel, onClose, onUpdateNode, onOpenInPlayground }) {
 }
 
 // =========================================================
-// Ask Foreman — Hybrid RAG Chat
+// Ask GOGO — Hybrid RAG Chat
 // =========================================================
 
 function AskPanel({ datasetId, onClose }) {
@@ -1593,7 +1593,7 @@ function AskPanel({ datasetId, onClose }) {
 
           <div>
             <div className="smart-panel-meta">
-              <span className="smart-panel-type story">ASK FOREMAN</span>
+              <span className="smart-panel-type story">ASK GOGO</span>
             </div>
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#0F172A" }}>
               Hybrid RAG Q&amp;A
@@ -1872,7 +1872,7 @@ function IntakePanel({ datasetId, onClose, onResult }) {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={messages.length ? "Answer Foreman's question or refine the Story…" : "Describe the new work…"}
+            placeholder={messages.length ? "Answer GOGO's question or refine the Story…" : "Describe the new work…"}
           />
           <button type="submit" disabled={loading || !text.trim()}>
             {loading ? "Thinking…" : messages.length ? "Continue" : "Start Intake"}
@@ -2338,7 +2338,7 @@ function FlowCanvas() {
   return (
     <div className="dataset-canvas-shell" ref={canvasShellRef}>
       <div className="dataset-canvas-topbar">
-        <div className="dataset-canvas-brand">Foreman</div>
+        <div className="dataset-canvas-brand">Gogo</div>
         <div className="dataset-canvas-title">
           <strong>Dataset Smart Canvas</strong>
           <span>Select an Epic to expand its hierarchy · Double-click any card to inspect.</span>
@@ -2365,7 +2365,7 @@ function FlowCanvas() {
         </div>
         <div className="fm-toolbar-section fm-toolbar-primary">
           <button className="btn-outline-action" type="button" onClick={() => togglePanel("search")}>⌕ Search</button>
-          <button className="btn-outline-action" type="button" onClick={() => togglePanel("ask")}>Ask Foreman</button>
+          <button className="btn-outline-action" type="button" onClick={() => togglePanel("ask")}>Ask Gogo</button>
           <button className="btn-primary-action" type="button" onClick={() => togglePanel("intake")}>+ New request</button>
           <div className="fm-more-wrap">
             <button className="btn-outline-action" type="button" aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen((value) => !value)}>More ⋯</button>

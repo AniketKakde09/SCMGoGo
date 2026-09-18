@@ -1546,7 +1546,7 @@ html,
 }
 
 /* =========================================================
-   Foreman Canvas — Semantic Action Button Aliases
+   GOGO Canvas — Semantic Action Button Aliases
    (same visual language as btn-save-json / btn-jira-submit,
    named for what they actually do on this canvas)
    ========================================================= */
@@ -1961,7 +1961,7 @@ html,
 }
 
 /* =========================================================
-   Ask Foreman — Chat
+   Ask GOGO — Chat
    ========================================================= */
 
 .chat-thread {
@@ -2758,7 +2758,7 @@ html,
 }
 
 /* =========================================================
-   Foreman unified delivery workspace / Canvas v2
+   GOGO unified delivery workspace / Canvas v2
    Scoped overrides replace conflicting viewport-sized legacy styling.
    ========================================================= */
 .fm-workspace-content .flow-container,
@@ -2882,7 +2882,7 @@ html,
   .fm-canvas-toolbar .btn-outline-action,.fm-canvas-toolbar .btn-primary-action { padding:7px 9px; }
 }
 
-/* Foreman hierarchy: deliberate 5-layer visual language, consistent dimensions. */
+/* GOGO hierarchy: deliberate 5-layer visual language, consistent dimensions. */
 .fm-workspace-content .dataset-canvas-stage .canvas-architecture-card,
 .fm-workspace-content .dataset-canvas-stage .canvas-issue-card {
   display:flex; flex-direction:column; width:100%; height:100%; box-sizing:border-box;

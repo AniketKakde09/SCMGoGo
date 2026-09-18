@@ -170,11 +170,7 @@ function UserInput() {
   // Submit
   // ---------------------------------------------------------
 
-  // The dataset is uploaded to the backend exactly once, right here —
-  // before navigating anywhere. This is what both Canvas's epic/SAD
-  // matching AND the Foreman Analysis report read from (see
-  // backend/services/backlog_context.py and foreman/main.py), so once
-  // this succeeds neither of those screens needs to ask for it again.
+  
   const uploadDatasetIfPresent = async () => {
     if (!selectedDataset) {
       return true;
@@ -486,7 +482,7 @@ function UserInput() {
             <p className="dataset-description">
               Upload your backlog workbook (.xlsx) once — it's used to check
               new epics against your existing backlog and architecture, and
-              it also powers the Foreman Analysis report. You won't be asked
+              it also powers the GOGO Analysis report. You won't be asked
               for it again.
             </p>
 
