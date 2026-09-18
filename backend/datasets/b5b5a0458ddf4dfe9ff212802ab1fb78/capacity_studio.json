@@ -1,0 +1,121 @@
+{
+  "members": {
+    "anant": {
+      "member_id": "anant",
+      "display_name": "Anant",
+      "team_id": "T101",
+      "sprints": [
+        {
+          "sprint_id": "sprint-1",
+          "sprint_name": "Sprint 1",
+          "start": "2026-09-18",
+          "end": "2026-10-01",
+          "working_days": 10,
+          "leave_days": 2.0,
+          "hours_per_day": 8.0,
+          "focus_percent": 70.0,
+          "support_hours": 0.0,
+          "planned_points": null,
+          "leave_dates": []
+        },
+        {
+          "sprint_id": "sprint-2",
+          "sprint_name": "Sprint 2",
+          "start": "2026-10-02",
+          "end": "2026-10-15",
+          "working_days": 10,
+          "leave_days": 0.0,
+          "hours_per_day": 8.0,
+          "focus_percent": 70.0,
+          "support_hours": 0.0,
+          "planned_points": null,
+          "leave_dates": []
+        }
+      ],
+      "updated_at": "2026-09-18T10:00:13.158686+00:00"
+    },
+    "aniket": {
+      "member_id": "aniket",
+      "display_name": "Aniket",
+      "team_id": "T101",
+      "sprints": [
+        {
+          "sprint_id": "sprint-1",
+          "sprint_name": "Sprint 1",
+          "start": "2026-09-18",
+          "end": "2026-10-01",
+          "working_days": 10,
+          "leave_days": 0.0,
+          "hours_per_day": 8.0,
+          "focus_percent": 70.0,
+          "support_hours": 0.0,
+          "planned_points": null,
+          "leave_dates": []
+        },
+        {
+          "sprint_id": "sprint-2",
+          "sprint_name": "Sprint 2",
+          "start": "2026-10-02",
+          "end": "2026-10-15",
+          "working_days": 10,
+          "leave_days": 0.0,
+          "hours_per_day": 8.0,
+          "focus_percent": 70.0,
+          "support_hours": 0.0,
+          "planned_points": null,
+          "leave_dates": []
+        }
+      ],
+      "updated_at": "2026-09-18T09:59:47.358467+00:00"
+    },
+    "alex": {
+      "member_id": "alex",
+      "display_name": "Alex",
+      "team_id": "T101",
+      "sprints": [
+        {
+          "sprint_id": "sprint-1",
+          "sprint_name": "Sprint 1",
+          "start": "2026-09-18",
+          "end": "2026-10-01",
+          "working_days": 10,
+          "leave_days": 2.0,
+          "hours_per_day": 8.0,
+          "focus_percent": 70.0,
+          "support_hours": 0.0,
+          "planned_points": null,
+          "leave_dates": []
+        },
+        {
+          "sprint_id": "sprint-2",
+          "sprint_name": "Sprint 2",
+          "start": "2026-10-02",
+          "end": "2026-10-15",
+          "working_days": 10,
+          "leave_days": 0.0,
+          "hours_per_day": 8.0,
+          "focus_percent": 70.0,
+          "support_hours": 0.0,
+          "planned_points": null,
+          "leave_dates": []
+        }
+      ],
+      "updated_at": "2026-09-18T09:59:12.154011+00:00"
+    }
+  },
+  "scenarios": {
+    "3c89151c40884c2e9cd630c1ab0f0040": {
+      "name": "What-if plan",
+      "team_id": "T101",
+      "sprint_ids": [
+        "sprint-1",
+        "sprint-2"
+      ],
+      "adjustments": {},
+      "notes": "Data check",
+      "scenario_id": "3c89151c40884c2e9cd630c1ab0f0040",
+      "created_at": "2026-09-18T08:53:40.449922+00:00",
+      "status": "draft"
+    }
+  }
+}
