@@ -5,3 +5,4 @@ __pycache__/
 vectorstore/chroma/*
 !vectorstore/chroma/.gitkeep
 datatsets/*
+models/*
