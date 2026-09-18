@@ -10,6 +10,7 @@ const NAV = [
   { to: "/sad", icon: "▤", label: "Add SAD", description: "Generate architecture backlog" },
   { to: "/playground", icon: "▧", label: "Planning studio", description: "Review & publish" },
   { to: "/capacity", icon: "▦", label: "Capacity Studio", description: "People & what-if planning" },
+  { to: "/estimation", icon: "◎", label: "Estimation", description: "Estimate team backlog" },
   { to: "/report", icon: "▥", label: "Forecast", description: "Capacity & delivery" },
 ];
 const PAGE = {
@@ -19,6 +20,7 @@ const PAGE = {
   "/sad": ["Add SAD", "Generate traceable work and review overlaps"],
   "/playground": ["Planning studio", "Human-owned changes and review"],
   "/capacity": ["Capacity Studio", "Team availability and safe planning scenarios"],
+  "/estimation" : [ "Estimation", "Collaborative team ticket estimation"],
   "/report": ["Forecast", "Capacity, velocity and delivery outlook"],
 };
 

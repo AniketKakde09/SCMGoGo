@@ -1,0 +1,1681 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"><key id="d10" for="edge" attr.name="notes" attr.type="string"/>
+<key id="d9" for="edge" attr.name="dependency_type" attr.type="string"/>
+<key id="d8" for="edge" attr.name="dependency_id" attr.type="string"/>
+<key id="d7" for="node" attr.name="sad_section_id" attr.type="string"/>
+<key id="d6" for="node" attr.name="parent_id" attr.type="string"/>
+<key id="d5" for="node" attr.name="sprint_id" attr.type="string"/>
+<key id="d4" for="node" attr.name="priority" attr.type="string"/>
+<key id="d3" for="node" attr.name="status" attr.type="string"/>
+<key id="d2" for="node" attr.name="ticket_type" attr.type="string"/>
+<key id="d1" for="node" attr.name="title" attr.type="string"/>
+<key id="d0" for="graph" attr.name="name" attr.type="string"/>
+<graph edgedefault="directed"><data key="d0">Foreman Ticket Dependency Graph</data>
+<node id="EPIC-01">
+  <data key="d1">Cloud Landing Zone</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="EPIC-02">
+  <data key="d1">Identity &amp; Access</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="EPIC-03">
+  <data key="d1">Data Platform</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="EPIC-04">
+  <data key="d1">Telematics Streaming</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="EPIC-05">
+  <data key="d1">Booking Core</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="EPIC-06">
+  <data key="d1">Workshop Services</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="EPIC-07">
+  <data key="d1">External Integrations</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="EPIC-08">
+  <data key="d1">Event Backbone</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="EPIC-09">
+  <data key="d1">Customer Web Portal</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="EPIC-10">
+  <data key="d1">Mobile &amp; Advisor App</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="EPIC-11">
+  <data key="d1">Quality Engineering</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="EPIC-12">
+  <data key="d1">Security &amp; Compliance</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="EPIC-13">
+  <data key="d1">CI/CD &amp; Release</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="F-01">
+  <data key="d1">VPC &amp; Networking</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-01</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-100">
+  <data key="d1">Build subnet layout</data>
+  <data key="d2">Story</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5">SPR-03</data>
+  <data key="d6">F-01</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-101">
+  <data key="d1">Integrate baseline VPC</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-01</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-102">
+  <data key="d1">Document baseline VPC</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-01</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-103">
+  <data key="d1">&lt;PERSON_ec3275&gt; tagging policy</data>
+  <data key="d2">Story</data>
+  <data key="d3">Done</data>
+  <data key="d4">High</data>
+  <data key="d5">SPR-02</data>
+  <data key="d6">F-01</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="F-02">
+  <data key="d1">Account Baseline &amp; Tagging</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-01</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-104">
+  <data key="d1">Document transit gateway</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-02</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-105">
+  <data key="d1">Integrate baseline VPC</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-02</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-106">
+  <data key="d1">Automate shared VPC endpoints</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-02</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-107">
+  <data key="d1">Integrate subnet layout</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-02</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="F-03">
+  <data key="d1">Shared Services</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-01</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-108">
+  <data key="d1">Build shared VPC endpoints</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-03</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="T-109">
+  <data key="d1">Configure shared VPC endpoints</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-03</data>
+  <data key="d7">SAD-01</data>
+</node>
+<node id="F-04">
+  <data key="d1">IdP &amp; OAuth Setup</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-02</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="T-110">
+  <data key="d1">Automate user pool</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-04</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="T-111">
+  <data key="d1">Build token refresh flow</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-04</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="F-05">
+  <data key="d1">RBAC &amp; Roles</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-02</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="T-112">
+  <data key="d1">Implement RBAC roles</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-05</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="T-113">
+  <data key="d1">Build RBAC roles</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-05</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="T-114">
+  <data key="d1">Build user pool</data>
+  <data key="d2">Task</data>
+  <data key="d3">Done</data>
+  <data key="d4">Low</data>
+  <data key="d5">SPR-01</data>
+  <data key="d6">F-05</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="F-06">
+  <data key="d1">Token &amp; Session Services</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-02</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="T-115">
+  <data key="d1">Provision OIDC client</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-06</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="T-116">
+  <data key="d1">Configure RBAC roles</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5">SPR-04</data>
+  <data key="d6">F-06</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="F-07">
+  <data key="d1">Ingestion Pipelines</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-03</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="T-117">
+  <data key="d1">Test schema registry</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-07</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="T-118">
+  <data key="d1">Automate stream consumer</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-07</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="F-08">
+  <data key="d1">Curated Data Zone</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-03</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="T-119">
+  <data key="d1">Integrate schema registry</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-08</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="T-120">
+  <data key="d1">Automate schema registry</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-08</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="F-09">
+  <data key="d1">Schema Registry</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-03</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="T-121">
+  <data key="d1">Build schema registry</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-09</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="T-122">
+  <data key="d1">Provision ingestion job</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-09</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="F-10">
+  <data key="d1">Device Registry</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-04</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="T-123">
+  <data key="d1">&lt;PERSON_43d220&gt; device registry API</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-10</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="T-124">
+  <data key="d1">Integrate device registry API</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-10</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="F-11">
+  <data key="d1">Stream Processing</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-04</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="T-125">
+  <data key="d1">Implement ingestion job</data>
+  <data key="d2">Story</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5">SPR-03</data>
+  <data key="d6">F-11</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="T-126">
+  <data key="d1">Document device registry API</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-11</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="F-12">
+  <data key="d1">Signal Storage</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-04</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="T-127">
+  <data key="d1">Design curated table</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-12</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="T-128">
+  <data key="d1">Automate ingestion job</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-12</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="T-129">
+  <data key="d1">Configure stream consumer</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-12</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="T-130">
+  <data key="d1">Harden stream consumer</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-12</data>
+  <data key="d7">SAD-04</data>
+</node>
+<node id="F-13">
+  <data key="d1">Booking Service</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-05</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-131">
+  <data key="d1">Provision scheduling logic</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-13</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-132">
+  <data key="d1">Integrate workshop slot API</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5">SPR-04</data>
+  <data key="d6">F-13</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-133">
+  <data key="d1">Implement availability service</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-13</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-134">
+  <data key="d1">&lt;PERSON_fd967c&gt; scheduling logic</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-13</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="F-14">
+  <data key="d1">Scheduling Engine</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-05</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-135">
+  <data key="d1">Design pricing rules</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-14</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-136">
+  <data key="d1">Provision workshop slot API</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-14</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-137">
+  <data key="d1">Provision workshop slot API</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-14</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-138">
+  <data key="d1">Automate pricing rules</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-14</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="F-15">
+  <data key="d1">Pricing Service</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-05</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-139">
+  <data key="d1">Provision availability service</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-15</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="T-140">
+  <data key="d1">Test availability service</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-15</data>
+  <data key="d7">SAD-05</data>
+</node>
+<node id="F-16">
+  <data key="d1">Workshop Slots</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-06</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="T-141">
+  <data key="d1">Document availability service</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-16</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="T-142">
+  <data key="d1">Build workshop slot API</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-16</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="T-143">
+  <data key="d1">Automate CRUD API</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-16</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="T-144">
+  <data key="d1">Automate workshop slot API</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-16</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="F-17">
+  <data key="d1">Technician Allocation</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-06</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="T-145">
+  <data key="d1">Integrate workshop slot API</data>
+  <data key="d2">Story</data>
+  <data key="d3">Done</data>
+  <data key="d4">High</data>
+  <data key="d5">SPR-01</data>
+  <data key="d6">F-17</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="T-146">
+  <data key="d1">Automate CRUD API</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-17</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="F-18">
+  <data key="d1">Parts Availability</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-06</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="T-147">
+  <data key="d1">Design workshop slot API</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-18</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="T-148">
+  <data key="d1">Implement scheduling logic</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-18</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="T-149">
+  <data key="d1">Provision availability service</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-18</data>
+  <data key="d7">SAD-06</data>
+</node>
+<node id="F-19">
+  <data key="d1">Payment Gateway</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-07</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-150">
+  <data key="d1">Provision DMS connector</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-19</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-151">
+  <data key="d1">Test saga handler</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-19</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-152">
+  <data key="d1">Integrate retry &amp; DLQ</data>
+  <data key="d2">Task</data>
+  <data key="d3">Done</data>
+  <data key="d4">Low</data>
+  <data key="d5">SPR-02</data>
+  <data key="d6">F-19</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-153">
+  <data key="d1">Test saga handler</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-19</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="F-20">
+  <data key="d1">Dealer DMS Connector</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-07</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-154">
+  <data key="d1">Design event publisher</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-20</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-155">
+  <data key="d1">Harden retry &amp; DLQ</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-20</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-156">
+  <data key="d1">Configure retry &amp; DLQ</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-20</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="F-21">
+  <data key="d1">Notification Service</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-07</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-157">
+  <data key="d1">Design retry &amp; DLQ</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-21</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-158">
+  <data key="d1">Test payment adapter</data>
+  <data key="d2">Story</data>
+  <data key="d3">Done</data>
+  <data key="d4">High</data>
+  <data key="d5">SPR-01</data>
+  <data key="d6">F-21</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-159">
+  <data key="d1">Design retry &amp; DLQ</data>
+  <data key="d2">Task</data>
+  <data key="d3">Done</data>
+  <data key="d4">Medium</data>
+  <data key="d5">SPR-02</data>
+  <data key="d6">F-21</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="F-22">
+  <data key="d1">Event Bus</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-08</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="T-160">
+  <data key="d1">Provision saga handler</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-22</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="T-161">
+  <data key="d1">Build saga handler</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-22</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="T-162">
+  <data key="d1">Document retry &amp; DLQ</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-22</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="T-163">
+  <data key="d1">Integrate retry &amp; DLQ</data>
+  <data key="d2">Story</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Medium</data>
+  <data key="d5">SPR-03</data>
+  <data key="d6">F-22</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="F-23">
+  <data key="d1">Saga Orchestration</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-08</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="T-164">
+  <data key="d1">Implement saga handler</data>
+  <data key="d2">Story</data>
+  <data key="d3">Done</data>
+  <data key="d4">Medium</data>
+  <data key="d5">SPR-01</data>
+  <data key="d6">F-23</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="T-165">
+  <data key="d1">Build event publisher</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-23</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="F-24">
+  <data key="d1">Dead-letter Handling</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-08</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="T-166">
+  <data key="d1">Automate DMS connector</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-24</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="T-167">
+  <data key="d1">Integrate saga handler</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-24</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="T-168">
+  <data key="d1">Harden payment adapter</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-24</data>
+  <data key="d7">SAD-08</data>
+</node>
+<node id="F-25">
+  <data key="d1">Booking Web UI</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-09</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-169">
+  <data key="d1">Test push handler</data>
+  <data key="d2">Story</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Medium</data>
+  <data key="d5">SPR-03</data>
+  <data key="d6">F-25</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-170">
+  <data key="d1">Build booking screen</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-25</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-171">
+  <data key="d1">Configure advisor dashboard</data>
+  <data key="d2">Task</data>
+  <data key="d3">Done</data>
+  <data key="d4">Medium</data>
+  <data key="d5">SPR-02</data>
+  <data key="d6">F-25</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="F-26">
+  <data key="d1">Tracking &amp; History</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-09</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-172">
+  <data key="d1">Implement push handler</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-26</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-173">
+  <data key="d1">Implement advisor dashboard</data>
+  <data key="d2">Story</data>
+  <data key="d3">Done</data>
+  <data key="d4">Low</data>
+  <data key="d5">SPR-02</data>
+  <data key="d6">F-26</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-174">
+  <data key="d1">Test tracking view</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-26</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-175">
+  <data key="d1">Document booking screen</data>
+  <data key="d2">Story</data>
+  <data key="d3">Done</data>
+  <data key="d4">Medium</data>
+  <data key="d5">SPR-01</data>
+  <data key="d6">F-26</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="F-27">
+  <data key="d1">Account Pages</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-09</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-176">
+  <data key="d1">Automate account page</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-27</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-177">
+  <data key="d1">Configure account page</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-27</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="T-178">
+  <data key="d1">Automate advisor dashboard</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-27</data>
+  <data key="d7">SAD-09</data>
+</node>
+<node id="F-28">
+  <data key="d1">Mobile Booking</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-10</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="T-179">
+  <data key="d1">Build advisor dashboard</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-28</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="T-180">
+  <data key="d1">Configure push handler</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-28</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="F-29">
+  <data key="d1">Advisor Cockpit</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-10</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="T-181">
+  <data key="d1">Design tracking view</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-29</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="T-182">
+  <data key="d1">Provision advisor dashboard</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-29</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="T-183">
+  <data key="d1">Test booking screen</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-29</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="F-30">
+  <data key="d1">Push Notifications</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-10</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="T-184">
+  <data key="d1">Document tracking view</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5">SPR-04</data>
+  <data key="d6">F-30</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="T-185">
+  <data key="d1">Integrate advisor dashboard</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-30</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="T-186">
+  <data key="d1">Provision account page</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-30</data>
+  <data key="d7">SAD-10</data>
+</node>
+<node id="F-31">
+  <data key="d1">Test Automation Harness</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-11</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="T-187">
+  <data key="d1">Automate perf test suite</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-31</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="T-188">
+  <data key="d1">Test test harness</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-31</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="F-32">
+  <data key="d1">Performance Tests</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-11</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="T-189">
+  <data key="d1">Provision regression pack</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-32</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="T-190">
+  <data key="d1">Document test data factory</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-32</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="T-191">
+  <data key="d1">Automate contract test</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-32</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="F-33">
+  <data key="d1">Contract Tests</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-11</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="T-192">
+  <data key="d1">Automate contract test</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-33</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="T-193">
+  <data key="d1">Harden test data factory</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-33</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="T-194">
+  <data key="d1">Automate test harness</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-33</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="T-195">
+  <data key="d1">Test contract test</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">F-33</data>
+  <data key="d7">SAD-11</data>
+</node>
+<node id="F-34">
+  <data key="d1">Threat Model &amp; Hardening</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-12</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="T-196">
+  <data key="d1">Document pen-test fixes</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-34</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="T-197">
+  <data key="d1">&lt;PERSON_9a7b40&gt; erasure flow</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-34</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="T-198">
+  <data key="d1">&lt;PERSON_775938&gt; audit log sink</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-34</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="F-35">
+  <data key="d1">GDPR Data Handling</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-12</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="T-199">
+  <data key="d1">Provision GDPR erasure flow</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-35</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="T-200">
+  <data key="d1">&lt;PERSON_ec1829&gt; erasure flow</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-35</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="T-201">
+  <data key="d1">Test audit log sink</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-35</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="F-36">
+  <data key="d1">Audit Logging</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-12</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="T-202">
+  <data key="d1">Integrate audit log sink</data>
+  <data key="d2">Story</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Low</data>
+  <data key="d5">SPR-03</data>
+  <data key="d6">F-36</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="T-203">
+  <data key="d1">Harden threat model</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-36</data>
+  <data key="d7">SAD-12</data>
+</node>
+<node id="F-37">
+  <data key="d1">CI Pipeline</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-13</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-204">
+  <data key="d1">Design IaC module</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-37</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-205">
+  <data key="d1">Provision blue-green deploy</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-37</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-206">
+  <data key="d1">Design promotion gate</data>
+  <data key="d2">Task</data>
+  <data key="d3">Done</data>
+  <data key="d4">High</data>
+  <data key="d5">SPR-01</data>
+  <data key="d6">F-37</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-207">
+  <data key="d1">Integrate rollback runbook</data>
+  <data key="d2">Story</data>
+  <data key="d3">Done</data>
+  <data key="d4">High</data>
+  <data key="d5">SPR-01</data>
+  <data key="d6">F-37</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="F-38">
+  <data key="d1">IaC &amp; Environments</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-13</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-208">
+  <data key="d1">Document CI pipeline</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-38</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-209">
+  <data key="d1">Document CI pipeline</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-38</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-210">
+  <data key="d1">Integrate rollback runbook</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-38</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="F-39">
+  <data key="d1">Blue-Green Release</data>
+  <data key="d2">Feature</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5"></data>
+  <data key="d6">EPIC-13</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-211">
+  <data key="d1">Provision CI pipeline</data>
+  <data key="d2">Story</data>
+  <data key="d3">Done</data>
+  <data key="d4">Low</data>
+  <data key="d5">SPR-02</data>
+  <data key="d6">F-39</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-212">
+  <data key="d1">Test CI pipeline</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5">SPR-04</data>
+  <data key="d6">F-39</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-213">
+  <data key="d1">Implement promotion gate</data>
+  <data key="d2">Task</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-39</data>
+  <data key="d7">SAD-14</data>
+</node>
+<node id="T-214">
+  <data key="d1">Configure promotion gate</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Low</data>
+  <data key="d5"></data>
+  <data key="d6">F-99</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="T-215">
+  <data key="d1">Automate rollback runbook</data>
+  <data key="d2">Story</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5">SPR-03</data>
+  <data key="d6">EPIC-77</data>
+  <data key="d7">SAD-07</data>
+</node>
+<node id="T-216">
+  <data key="d1">Document tagging policy</data>
+  <data key="d2">Story</data>
+  <data key="d3">To Do</data>
+  <data key="d4">Medium</data>
+  <data key="d5"></data>
+  <data key="d6">F-88</data>
+  <data key="d7">SAD-02</data>
+</node>
+<node id="EPIC-14">
+  <data key="d1">Loyalty &amp; Rewards (unscoped)</data>
+  <data key="d2">Epic</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">Highest</data>
+  <data key="d5"></data>
+  <data key="d6"></data>
+  <data key="d7">SAD-99</data>
+</node>
+<node id="T-217">
+  <data key="d1">Add tests for schema registry</data>
+  <data key="d2">Story</data>
+  <data key="d3">In Progress</data>
+  <data key="d4">High</data>
+  <data key="d5">SPR-03</data>
+  <data key="d6">F-07</data>
+  <data key="d7">SAD-03</data>
+</node>
+<node id="T-9999">
+  <data key="d1"></data>
+</node>
+<edge source="T-110" target="T-188">
+  <data key="d8">DEP-023</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">part of a dependency cycle</data>
+</edge>
+<edge source="T-134" target="T-112">
+  <data key="d8">DEP-013</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Backend work needs Identity in place</data>
+</edge>
+<edge source="T-136" target="T-111">
+  <data key="d8">DEP-020</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Backend work needs Identity in place</data>
+</edge>
+<edge source="T-157" target="T-117">
+  <data key="d8">DEP-016</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Integrations work needs Data in place</data>
+</edge>
+<edge source="T-159" target="T-133">
+  <data key="d8">DEP-018</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Integrations work needs Backend in place</data>
+</edge>
+<edge source="T-162" target="T-9999">
+  <data key="d8">DEP-021</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">references missing ticket</data>
+</edge>
+<edge source="T-164" target="T-169">
+  <data key="d8">DEP-025</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">scheduled before its dependency</data>
+</edge>
+<edge source="T-165" target="T-148">
+  <data key="d8">DEP-005</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Integrations work needs Backend in place</data>
+</edge>
+<edge source="T-172" target="T-106">
+  <data key="d8">DEP-008</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Frontend work needs Infrastructure in place</data>
+</edge>
+<edge source="T-179" target="T-216">
+  <data key="d8">DEP-002</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Frontend work needs Infrastructure in place</data>
+</edge>
+<edge source="T-182" target="T-145">
+  <data key="d8">DEP-003</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Frontend work needs Backend in place</data>
+</edge>
+<edge source="T-183" target="T-114">
+  <data key="d8">DEP-017</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Frontend work needs Identity in place</data>
+</edge>
+<edge source="T-183" target="T-110">
+  <data key="d8">DEP-022</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">part of a dependency cycle</data>
+</edge>
+<edge source="T-188" target="T-145">
+  <data key="d8">DEP-012</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">QA work needs Backend in place</data>
+</edge>
+<edge source="T-188" target="T-183">
+  <data key="d8">DEP-024</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">part of a dependency cycle</data>
+</edge>
+<edge source="T-191" target="T-146">
+  <data key="d8">DEP-004</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">QA work needs Backend in place</data>
+</edge>
+<edge source="T-192" target="T-181">
+  <data key="d8">DEP-011</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">QA work needs Frontend in place</data>
+</edge>
+<edge source="T-195" target="T-170">
+  <data key="d8">DEP-010</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">QA work needs Frontend in place</data>
+</edge>
+<edge source="T-199" target="T-163">
+  <data key="d8">DEP-007</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Security work needs Integrations in place</data>
+</edge>
+<edge source="T-199" target="T-105">
+  <data key="d8">DEP-009</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Security work needs Infrastructure in place</data>
+</edge>
+<edge source="T-200" target="T-119">
+  <data key="d8">DEP-006</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Security work needs Data in place</data>
+</edge>
+<edge source="T-202" target="T-101">
+  <data key="d8">DEP-019</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Security work needs Infrastructure in place</data>
+</edge>
+<edge source="T-205" target="T-136">
+  <data key="d8">DEP-001</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Release work needs Backend in place</data>
+</edge>
+<edge source="T-205" target="T-169">
+  <data key="d8">DEP-014</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Release work needs Frontend in place</data>
+</edge>
+<edge source="T-215" target="T-185">
+  <data key="d8">DEP-015</data>
+  <data key="d9">Blocks</data>
+  <data key="d10">Release work needs Frontend in place</data>
+</edge>
+</graph></graphml>

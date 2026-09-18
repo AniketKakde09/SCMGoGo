@@ -9,6 +9,7 @@ import SADIntake from "./pages/SADIntake";
 import CapacityStudio from "./pages/CapacityStudio";
 import ForecastReportRoute from "./pages/ForecastReportRoute";
 import WorkspaceShell from "./components/WorkspaceShell";
+import Estimation from "./pages/Estimation";
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
           <Route path="/playground" element={<PlanningPlayground />} />
           <Route path="/sad" element={<SADIntake />} />
           <Route path="/capacity" element={<CapacityStudio />} />
+          <Route path="/estimation" element={<Estimation />} />
         </Route>
         <Route path="*" element={<Navigate to="/start" replace />} />
       </Routes>

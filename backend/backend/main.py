@@ -25,6 +25,7 @@ from smart_sprint import router as smart_sprint_router
 from capacity_studio import router as capacity_studio_router
 from security import sanitize_response_payload, sanitize_text, security_status
 from sad_workflow import extract_document, generate_proposal, MAX_BYTES
+from estimation import build_estimation_workspace
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATASETS_DIR = Path(os.getenv("FOREMAN_DATASETS_DIR", str(BASE_DIR / "datasets")))
@@ -366,3 +367,65 @@ async def generate_sad_upload(dataset_id: str, file: UploadFile = File(...)):
     data = await file.read(MAX_BYTES + 1)
     text = extract_document(file.filename or "", data)
     return generate_proposal(text, manager.paths(dataset_id)["excel"], file.filename or "SAD")
+
+@app.get("/datasets/{dataset_id}/estimation")
+def estimation_workspace(
+    dataset_id: str,
+    team_id: str | None = None,
+):
+    """
+    Return the minimum dataset information required by the
+    collaborative ticket estimation UI.
+
+    Without team_id:
+        returns available teams.
+
+    With team_id:
+        returns selected team, members and tickets.
+    """
+
+    paths = manager.paths(dataset_id)
+    metadata = manager.read_metadata(dataset_id)
+
+    if metadata.get("status") != "ready":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Dataset is not ready: "
+                f"{metadata.get('status')}"
+            ),
+        )
+
+    source_excel = paths["excel"]
+
+    if not source_excel.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset Excel file not found",
+        )
+
+    try:
+        result = build_estimation_workspace(
+            source_excel,
+            team_id=team_id,
+        )
+
+        return {
+            "dataset_id": dataset_id,
+            **result,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Estimation data generation failed: "
+                f"{exc}"
+            ),
+        ) from exc

@@ -200,6 +200,23 @@ export function getCanvasGraph(datasetId) {
   return request(`/datasets/${datasetId}/canvas`);
 }
 
+// ---------------------------------------------------------
+// Estimation
+// ---------------------------------------------------------
+
+export function getEstimationData(datasetId, teamId) {
+  const query = teamId ? `?team_id=${encodeURIComponent(teamId)}` : "";
+  return request(`/datasets/${encodeURIComponent(datasetId)}/estimation${query}`);
+}
+
+export function submitEstimates(datasetId, payload) {
+  return request(`/datasets/${encodeURIComponent(datasetId)}/estimation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 export { API_BASE_URL };
 
 // ---------------------------------------------------------
@@ -266,7 +283,6 @@ export function reviewStory(datasetId, payload) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   });
 }
-
 // Batch semantic review for all generated S-AD tickets; does not create Jira issues.
 export function reviewTicketBatch(datasetId, payload) {
   return request(`/api/planning/stories/datasets/${encodeURIComponent(datasetId)}/review-batch`, {

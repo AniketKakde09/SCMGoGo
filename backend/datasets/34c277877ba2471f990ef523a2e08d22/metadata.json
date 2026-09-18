@@ -1,0 +1,11 @@
+{
+  "dataset_id": "34c277877ba2471f990ef523a2e08d22",
+  "filename": "Foreman_Synthetic_Dataset.xlsx",
+  "status": "ingesting",
+  "created_at": "2026-09-18T06:09:44.490351+00:00",
+  "updated_at": "2026-09-18T06:10:22.677088+00:00",
+  "collection_name": "foreman_34c277877ba2471f990ef523a2e08d22",
+  "sanitized": true,
+  "sanitized_at": "2026-09-18T06:10:22.670324+00:00",
+  "error": null
+}
