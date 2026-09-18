@@ -9,6 +9,7 @@ const NAV = [
   { to: "/canvas", icon: "◇", label: "Delivery Canvas", description: "Explore work" },
   { to: "/sad", icon: "▤", label: "Add SAD", description: "Generate architecture backlog" },
   { to: "/playground", icon: "▧", label: "Planning studio", description: "Review & publish" },
+  { to: "/estimation", icon: "◎", label: "Estimation", description: "Estimate team backlog" },
   { to: "/report", icon: "▥", label: "Forecast", description: "Capacity & delivery" },
 ];
 const PAGE = {
@@ -17,6 +18,7 @@ const PAGE = {
   "/canvas": ["Delivery Canvas", "Explore your backlog and architecture"],
   "/sad": ["Add SAD", "Generate traceable work and review overlaps"],
   "/playground": ["Planning studio", "Human-owned changes and review"],
+  "/estimation" : [ "Estimation", "Collaborative team ticket estimation"],
   "/report": ["Forecast", "Capacity, velocity and delivery outlook"],
 };
 

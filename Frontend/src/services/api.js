@@ -200,6 +200,23 @@ export function getCanvasGraph(datasetId) {
   return request(`/datasets/${datasetId}/canvas`);
 }
 
+// ---------------------------------------------------------
+// Estimation
+// ---------------------------------------------------------
+
+export function getEstimationData(datasetId, teamId) {
+  const query = teamId ? `?team_id=${encodeURIComponent(teamId)}` : "";
+  return request(`/datasets/${encodeURIComponent(datasetId)}/estimation${query}`);
+}
+
+export function submitEstimates(datasetId, payload) {
+  return request(`/datasets/${encodeURIComponent(datasetId)}/estimation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 export { API_BASE_URL };
 
 // ---------------------------------------------------------
