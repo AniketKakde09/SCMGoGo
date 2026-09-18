@@ -7,7 +7,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "./PlanningPlayground.css";
 import SmartSprintPlanner from "./SmartSprintPlanner";
-import { reviewStory } from "../services/api";
+import { reviewStory, reviewTicketBatch } from "../services/api";
 import { getCanvasGraph, runIntake, startJiraSync, watchJiraSync, exportPlanningExcel } from "../services/api";
 
 const TYPES = ["Epic", "Feature", "Story", "Task", "Sub-task", "Note"];
@@ -64,7 +64,7 @@ function WorkNode({ data, selected }) {
     {data.parentTitle ? <small>↳ {data.parentTitle}</small> : data.sprint ? <small>{data.sprint}</small> : <small>Unscheduled</small>}
     {data.jiraKey && jiraLink(data.jiraKey) ? <a className="pg-jira-link" href={jiraLink(data.jiraKey)} target="_blank" rel="noopener noreferrer" onClick={(event)=>event.stopPropagation()}>Open {data.jiraKey} in Jira ↗</a> : null}
     {data.publishError ? <span className="pg-node-warning">{data.publishError}</span> : null}
-    {needsDuplicateReview(data) ? <span className="pg-node-warning">High-confidence overlap · review</span> : null}
+    {data.semanticReview?.decision === "equivalent" ? <span className="pg-node-warning">⛔ Equivalent ticket · blocked</span> : data.semanticReview?.decision === "needs_review" ? <span className="pg-node-warning">⚑ Semantic overlap · review</span> : needsDuplicateReview(data) ? <span className="pg-node-warning">High-confidence overlap · review</span> : null}
     <Handle type="source" position={Position.Right} />
   </div>;
 }
@@ -73,7 +73,7 @@ function WorkNode({ data, selected }) {
 const highConfidenceCandidates = (data) => (data?.duplicateCandidates || []).filter(
   candidate => candidate?.confidence === "high" && Boolean(candidate.ticket_id)
 );
-const needsDuplicateReview = (data) => highConfidenceCandidates(data).length > 0 && !data?.duplicateReviewed;
+const needsDuplicateReview = (data) => data?.semanticReview?.decision === "equivalent" || (data?.semanticReview?.decision === "needs_review" && (!data?.duplicateReviewed || (data?.distinctReason || "").trim().length < 12)) || (highConfidenceCandidates(data).length > 0 && !data?.duplicateReviewed);
 const nodeTypes = { work: WorkNode };
 const norm = (v) => String(v || "").trim().toLowerCase();
 const asDistance = (v) => v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null;
@@ -144,9 +144,11 @@ function PlaygroundInner() {
 
   // Consume the SAD proposal once, keeping existing dataset records read-only.
   const importedProposal = useRef(null);
+  const [importReviewBusy, setImportReviewBusy] = useState(false);
   useEffect(() => {
     const proposal = location.state?.sadProposal;
     if (!proposal?.tickets?.length || importedProposal.current === proposal) return;
+    if (!datasetId) { setNotice("Connect the original dataset before importing S-AD tickets; nothing was added."); return; }
     importedProposal.current = proposal;
     const batchId = `sad-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const idMap = new Map(proposal.tickets.map((ticket, index) => [ticket.id, `${batchId}-${index}`]));
@@ -162,7 +164,7 @@ function PlaygroundInner() {
         parentSource: "Draft", sourceSectionId: ticket.source_section_id, sourceExcerpt: ticket.source_excerpt,
         assumptions: ticket.assumptions, duplicateCandidates: (ticket.duplicate_candidates || []).filter(candidate => candidate.confidence === "high" && candidate.ticket_id),
         duplicate: (ticket.duplicate_candidates || []).find(candidate => candidate.confidence === "high" && candidate.ticket_id) || null,
-        duplicateReviewed: false, analysis: null, jiraKey: "", reviewStatus: ticket.review_status },
+        duplicateReviewed: false, semanticReview: null, analysis: null, jiraKey: "", reviewStatus: ticket.review_status },
     }));
     const draftEdges = proposal.tickets.filter(ticket => idMap.has(ticket.parent_id)).map(ticket => ({
       id: `parent-${idMap.get(ticket.parent_id)}-${idMap.get(ticket.id)}`,
@@ -170,12 +172,34 @@ function PlaygroundInner() {
       label: "contains", data: { kind: "hierarchy" }, markerEnd: { type: MarkerType.ArrowClosed },
     }));
     const positioned = layoutHierarchy(draftNodes);
-    setNodes(current => [...current, ...positioned]);
-    setEdges(current => [...current, ...draftEdges]);
-    setSelectedId(draftNodes[0]?.id || null);
-    window.setTimeout(() => fitView({ padding: 0.12, duration: 450 }), 150);
-    setNotice(`Imported ${draftNodes.length} SAD drafts. Review any high-confidence duplicates and readiness before publishing. Existing dataset unchanged.`);
-    navigate(location.pathname, { replace: true, state: { datasetId } });
+    // Fail closed: never import without a complete server-side full-backlog review.
+    let cancelled = false;
+    setImportReviewBusy(true);
+    const payload = {
+      tickets: draftNodes.filter(n => ["Epic", "Feature", "Story", "Task", "Bug"].includes(n.data.type)).map(n => ({
+        id:n.id, title:n.data.title, type:n.data.type, description:n.data.description || "",
+        acceptance_criteria:n.data.acceptanceCriteria || "", parent_id:n.data.parentId || "",
+      })),
+      local_drafts: nodes.filter(n => ["Epic", "Feature", "Story", "Task", "Bug"].includes(n.data.type)).map(n => ({
+        id:n.id, title:n.data.title, type:n.data.type, description:n.data.description || "",
+        acceptance_criteria:n.data.acceptanceCriteria || "", parent_id:n.data.parentId || "",
+      })),
+    };
+    reviewTicketBatch(datasetId, payload).then(result => {
+      if (cancelled) return;
+      const byId = new Map((result.results || []).map(item => [item.id, item]));
+      if (byId.size !== payload.tickets.length) throw new Error("Incomplete duplicate review; import cancelled.");
+      const reviewed = positioned.map(n => ({...n, data:{...n.data, semanticReview:byId.get(n.id) || null}}));
+      setNodes(current => [...current, ...reviewed]);
+      setEdges(current => [...current, ...draftEdges]);
+      setSelectedId(draftNodes[0]?.id || null);
+      window.setTimeout(() => fitView({ padding: 0.12, duration: 450 }), 150);
+      setNotice(`Imported ${reviewed.length} S-AD drafts; ${result.flagged || 0} flagged by the full-backlog duplicate check. Flagged work must be resolved before publishing.`);
+      navigate(location.pathname, { replace: true, state: { datasetId } });
+    }).catch(error => {
+      if (!cancelled) { importedProposal.current = null; setNotice(`S-AD import blocked: ${error.message}. No tickets were added.`); }
+    }).finally(() => { if (!cancelled) setImportReviewBusy(false); });
+    return () => { cancelled = true; importedProposal.current = null; };
   }, [location.state?.sadProposal, datasetId, setNodes, setEdges, navigate, location.pathname, fitView]);
 
   const existingByType = useMemo(() => {
@@ -195,18 +219,18 @@ function PlaygroundInner() {
     return [...existing, ...drafts];
   }, [existingByType, nodes, selectedId, selectedNode]);
 
-  const localStoryDrafts = (excludeId = "") => nodes.filter(n => n.id !== excludeId && ["Story", "Task", "Feature"].includes(n.data.type)).map(n => ({
+  const localStoryDrafts = (excludeId = "") => nodes.filter(n => n.id !== excludeId && ["Epic", "Feature", "Story", "Task", "Bug"].includes(n.data.type)).map(n => ({
     id:n.id, title:n.data.title, description:n.data.description || "", acceptance_criteria:n.data.acceptanceCriteria || "", type:n.data.type, parent_id:n.data.parentId || "", sprint:n.data.sprint || ""
   }));
   const addNode = async () => {
     const cleanTitle = title.trim();
     if (!cleanTitle) { setNotice("Enter a work item title."); return; }
-    if (newType === "Story") {
-      if (!datasetId) { setNotice("Connect the original dataset before adding a Story."); return; }
-      if (!newDescription.trim() || !newCriteria.trim()) { setNotice("Provide a description and acceptance criteria before reviewing a Story."); return; }
+    if (newType !== "Note" && newType !== "Sub-task") {
+      if (!datasetId) { setNotice("Connect the original dataset before adding work."); return; }
+      if (newType === "Story" && (!newDescription.trim() || !newCriteria.trim())) { setNotice("Provide a description and acceptance criteria before reviewing a Story."); return; }
       setStoryReviewBusy(true); setStoryReview(null); setDistinctReason("");
       try {
-        const result = await reviewStory(datasetId, {story:{title:cleanTitle, description:newDescription, acceptance_criteria:newCriteria, type:"Story"}, local_drafts:localStoryDrafts()});
+        const result = await reviewStory(datasetId, {story:{title:cleanTitle, description:newDescription, acceptance_criteria:newCriteria, type:newType}, local_drafts:localStoryDrafts()});
         setStoryReview(result);
       } catch(error) { setNotice(error.message || "Story review failed; nothing was created."); }
       finally { setStoryReviewBusy(false); }
@@ -222,24 +246,24 @@ function PlaygroundInner() {
     const parentTitle = parent?.data?.title || existing?.title || "";
     const index = nodes.length;
     setNodes(current => [...current, {id, type:"work", position:{x:120+(index%4)*280,y:120+Math.floor(index/4)*180}, data:{
-      type, title:cleanTitle, points:"", sprint:"", description:type==="Story"?newDescription:"",
+      type, title:cleanTitle, points:"", sprint:"", description:newDescription,
       acceptanceCriteria:type==="Story"?newCriteria:"", dod:type==="Story"?newDod.split("\n").map(x=>x.trim()).filter(Boolean).slice(0,2).join("\n"):"",
       priority:"Medium", parentId, parentTitle,
-      analysis:null, duplicate:null, jiraKey:"", storyReviewStatus:review?.decision === "needs_review" ? "reviewed_distinct" : review ? "new" : "",
+      analysis:null, duplicate:null, semanticReview:review, duplicateReviewed:review?.decision !== "needs_review", jiraKey:"", storyReviewStatus:review?.decision === "needs_review" ? "reviewed_distinct" : review ? "new" : "",
       distinctReason:review?.decision === "needs_review" ? distinctReason.trim() : "",
     }}]);
     setSelectedId(id); setTitle(""); setNewDescription(""); setNewCriteria(""); setNewDod(""); setStoryReview(null); setShowComposer(false);
-    if (type === "Story") setNotice("Story added as an unscheduled draft. Confirm parent and run Smart Sprint Planner before publishing.");
+    if (type !== "Note") setNotice(`${type} added as an unscheduled draft. Confirm parent and run Smart Sprint Planner before publishing.`);
   };
   const approveStory = () => {
     if (!storyReview || storyReview.decision === "equivalent") return;
-    if (storyReview.decision === "needs_review" && distinctReason.trim().length < 12) { setNotice("Explain why this Story differs from the similar work (at least 12 characters)."); return; }
-    createLocalNode({title:title.trim(), type:"Story", review:storyReview});
+    if (storyReview.decision === "needs_review" && distinctReason.trim().length < 12) { setNotice("Explain why this ticket differs from the similar work (at least 12 characters)."); return; }
+    createLocalNode({title:title.trim(), type:newType, review:storyReview});
   };
 
   const updateNodeById = useCallback((nodeId, patch) => {
     if (!nodeId) return;
-    setNodes((current) => current.map((n) => n.id === nodeId ? { ...n, data:{ ...n.data, ...patch, ...(Object.keys(patch).some((k) => ["title","description","type"].includes(k)) ? { analysis:null, duplicate:null, suggestedParentId:"", duplicateReviewed:false, storyReviewStatus:"", distinctReason:"" } : {}) } } : n));
+    setNodes((current) => current.map((n) => n.id === nodeId ? { ...n, data:{ ...n.data, ...patch, ...(Object.keys(patch).some((k) => ["title","description","type"].includes(k)) ? { analysis:null, duplicate:null, semanticReview:{decision:"needs_review", matches:[], checked_original_count:0, checked_local_count:0}, suggestedParentId:"", duplicateReviewed:false, storyReviewStatus:"", distinctReason:"" } : {}) } } : n));
   }, [setNodes]);
   const updateSelected = useCallback((patch) => updateNodeById(selectedId, patch), [selectedId, updateNodeById]);
 
@@ -321,12 +345,12 @@ function PlaygroundInner() {
       PARENT_TYPE[data.type] && !data.parentId && `${PARENT_TYPE[data.type]} placement`,
     ].filter(Boolean);
     if (missing.length) { setNotice(`Complete before publishing: ${missing.join(", ")}.`); return; }
-    if (needsDuplicateReview(data)) { setNotice("Review the SAD duplicate candidates before publishing."); return; }
+    if (needsDuplicateReview(data)) { setNotice("Resolve semantic duplicate flags before publishing; equivalent work cannot be published."); return; }
     if (highConfidenceCandidates(data).length && !window.confirm(`Potential overlap with ${data.duplicate.ticket_id}. Have you reviewed it and confirmed this is genuinely new work?`)) return;
-    if (data.type === "Story") {
-      if (!datasetId) { setNotice("Connect a dataset to recheck this Story before Jira publishing."); return; }
+    if (["Epic", "Feature", "Story", "Task", "Bug"].includes(data.type)) {
+      if (!datasetId) { setNotice("Connect a dataset to recheck this ticket before Jira publishing."); return; }
       try {
-        const review = await reviewStory(datasetId, {story:{id:selectedNode.id,title:data.title,description:data.description,acceptance_criteria:data.acceptanceCriteria,type:"Story",parent_id:data.parentId||""},local_drafts:localStoryDrafts(selectedNode.id)});
+        const review = await reviewStory(datasetId, {story:{id:selectedNode.id,title:data.title,description:data.description,acceptance_criteria:data.acceptanceCriteria,type:data.type,parent_id:data.parentId||""},local_drafts:localStoryDrafts(selectedNode.id)});
         if (review.decision === "equivalent" || (review.decision === "needs_review" && (!data.distinctReason || data.distinctReason.trim().length < 12))) {
           setNotice(`Jira blocked: ${review.decision === "equivalent" ? "equivalent ticket exists" : "similar work needs an explicit distinct-scope review"}. ${review.matches.map(m=>m.id).join(", ")}`); return;
         }
@@ -420,9 +444,9 @@ function PlaygroundInner() {
     const duplicates = pending.filter((node)=>highConfidenceCandidates(node.data).length);
     if (duplicates.length && !window.confirm(`${duplicates.length} drafts have potential duplicate matches. Review these before publishing. Continue anyway?`)) return;
     try {
-      for (const node of pending.filter(n=>n.data.type === "Story")) {
-        if (!datasetId) throw new Error("Connect a dataset before publishing Stories.");
-        const review = await reviewStory(datasetId, {story:{id:node.id,title:node.data.title,description:node.data.description,acceptance_criteria:node.data.acceptanceCriteria,type:"Story",parent_id:node.data.parentId||""},local_drafts:localStoryDrafts(node.id)});
+      for (const node of pending.filter(n=>["Epic", "Feature", "Story", "Task", "Bug"].includes(n.data.type))) {
+        if (!datasetId) throw new Error("Connect a dataset before publishing tickets.");
+        const review = await reviewStory(datasetId, {story:{id:node.id,title:node.data.title,description:node.data.description,acceptance_criteria:node.data.acceptanceCriteria,type:node.data.type,parent_id:node.data.parentId||""},local_drafts:localStoryDrafts(node.id)});
         if (review.decision === "equivalent" || (review.decision === "needs_review" && (!node.data.distinctReason || node.data.distinctReason.trim().length < 12))) throw new Error(`${node.data.title}: ${review.decision}; ${review.matches.map(m=>m.id).join(", ")}. Resolve before publishing.`);
       }
     } catch(error) { setNotice(`Jira blocked: ${error.message}`); return; }
@@ -673,7 +697,7 @@ function PlaygroundInner() {
       </div>
       {(showComposer || searchOpen || openPanel) && <div className="pg-floating-popover" role="region" aria-label="Canvas options">
         <div className="pg-popover-heading"><strong>{showComposer ? "Add work item" : searchOpen ? "Find work" : openPanel==="filters" ? "Filter work" : openPanel==="connections" ? "Connect work" : openPanel==="settings" ? "Canvas preferences" : "More actions"}</strong><button type="button" aria-label="Close panel" onClick={()=>{setOpenPanel(null);setShowComposer(false);setSearchOpen(false);}}>×</button></div>
-        {showComposer && <div className="pg-popover-stack"><label>Issue type<select value={newType} onChange={e=>{setNewType(e.target.value);setStoryReview(null);}}>{TYPES.map(t=><option key={t}>{t}</option>)}</select></label><label>Title<input value={title} onChange={e=>{setTitle(e.target.value);setStoryReview(null);}} placeholder="What needs to be built?" autoFocus/></label>{newType === "Story" && <><label>Description<textarea rows="3" value={newDescription} onChange={e=>{setNewDescription(e.target.value);setStoryReview(null);}}/></label><label>Acceptance criteria<textarea rows="3" value={newCriteria} onChange={e=>{setNewCriteria(e.target.value);setStoryReview(null);}}/></label><label>Definition of Done<textarea rows="3" value={newDod} onChange={e=>{setNewDod(e.target.value.split("\n").slice(0,2).join("\n"));setStoryReview(null);}} placeholder="Up to 2 DoD items, one per line"/></label></>}{!storyReview && <button type="button" className="pg-popover-primary" disabled={storyReviewBusy} onClick={addNode}>{storyReviewBusy?"Comparing full backlog…":newType==="Story"?"Review Story before adding":"Add to canvas"}</button>}{storyReview && <section className="pg-ai-card" role="status"><strong>{storyReview.decision === "equivalent" ? "Equivalent ticket found — creation blocked" : storyReview.decision === "needs_review" ? "Similar work — decision required" : "No equivalent found"}</strong><p>Checked {storyReview.checked_original_count || 0} original tickets and {storyReview.checked_local_count || 0} local drafts.</p>{storyReview.matches?.map(m=><p key={`${m.source}-${m.id}`}><b>{m.id}</b> · {m.title} ({m.source}, semantic similarity {m.semantic_similarity})</p>)}<p>Suggested parent: {storyReview.suggested_parent_id || "Choose manually"}. Sprint: Unscheduled. {storyReview.placement_reason}</p>{storyReview.decision === "needs_review" && <label>Why is this genuinely different?<textarea rows="2" value={distinctReason} onChange={e=>setDistinctReason(e.target.value)} placeholder="Compare scope and acceptance criteria"/></label>}{storyReview.decision !== "equivalent" && <button type="button" className="pg-popover-primary" onClick={approveStory}>Approve and add draft</button>}<button type="button" onClick={()=>setStoryReview(null)}>Back to edit</button></section>}</div>}
+        {showComposer && <div className="pg-popover-stack"><label>Issue type<select value={newType} onChange={e=>{setNewType(e.target.value);setStoryReview(null);}}>{TYPES.map(t=><option key={t}>{t}</option>)}</select></label><label>Title<input value={title} onChange={e=>{setTitle(e.target.value);setStoryReview(null);}} placeholder="What needs to be built?" autoFocus/></label>{newType !== "Note" && newType !== "Sub-task" && <><label>Description<textarea rows="3" value={newDescription} onChange={e=>{setNewDescription(e.target.value);setStoryReview(null);}}/></label><label>Acceptance criteria<textarea rows="3" value={newCriteria} onChange={e=>{setNewCriteria(e.target.value);setStoryReview(null);}}/></label><label>Definition of Done<textarea rows="3" value={newDod} onChange={e=>{setNewDod(e.target.value.split("\n").slice(0,2).join("\n"));setStoryReview(null);}} placeholder="Up to 2 DoD items, one per line"/></label></>}{!storyReview && <button type="button" className="pg-popover-primary" disabled={storyReviewBusy || importReviewBusy} onClick={addNode}>{storyReviewBusy?"Comparing full backlog…":newType==="Note" || newType==="Sub-task"?"Add to canvas":`Review ${newType} before adding`}</button>}{storyReview && <section className="pg-ai-card" role="status"><strong>{storyReview.decision === "equivalent" ? "Equivalent ticket found — creation blocked" : storyReview.decision === "needs_review" ? "Similar work — decision required" : "No equivalent found"}</strong><p>Checked {storyReview.checked_original_count || 0} original tickets and {storyReview.checked_local_count || 0} local drafts.</p>{storyReview.matches?.map(m=><p key={`${m.source}-${m.id}`}><b>{m.id}</b> · {m.title} ({m.source}, semantic similarity {m.semantic_similarity})</p>)}<p>Suggested parent: {storyReview.suggested_parent_id || "Choose manually"}. Sprint: Unscheduled. {storyReview.placement_reason}</p>{storyReview.decision === "needs_review" && <label>Why is this genuinely different?<textarea rows="2" value={distinctReason} onChange={e=>setDistinctReason(e.target.value)} placeholder="Compare scope and acceptance criteria"/></label>}{storyReview.decision !== "equivalent" && <button type="button" className="pg-popover-primary" onClick={approveStory}>Approve and add draft</button>}<button type="button" onClick={()=>setStoryReview(null)}>Back to edit</button></section>}</div>}
         {searchOpen && <div className="pg-popover-stack"><input aria-label="Search work items" autoFocus placeholder="Search title, description, or Jira key…" value={searchText} onChange={e=>setSearchText(e.target.value)}/>{searchText && <button type="button" onClick={()=>setSearchText("")}>Clear search</button>}<small>{displayedNodes.length} matching visible items</small></div>}
         {openPanel==="filters" && <div className="pg-filter-options">{["All","Epic","Feature","Story","Task","Duplicates"].map(type=><button type="button" key={type} className={typeFilter===type?"is-active":""} onClick={()=>{setTypeFilter(type);setOpenPanel(null);}}><span>{type==="All"?"All work":type==="Duplicates"?"Needs duplicate review":`${type}s`}</span><b>{type==="All"?nodes.length:type==="Duplicates"?nodes.filter(n=>needsDuplicateReview(n.data)).length:counts[type]}</b></button>)}</div>}
         {openPanel==="connections" && <div className="pg-popover-stack"><p>Drag between node handles to create a relationship.</p><label>Relationship<select value={relationMode} onChange={e=>setRelationMode(e.target.value)}><option>Auto</option><option>Hierarchy</option><option>Blocks</option><option>Requires</option><option>Relates</option></select></label><small>Auto uses hierarchy when the issue types permit it; otherwise it creates a related-work link.</small></div>}
@@ -697,6 +721,7 @@ function PlaygroundInner() {
       </section>
     </div>}
     {bulkProgress && <div className="pg-bulk-progress" role="status"><strong>Jira creation · {bulkProgress.completed}/{bulkProgress.total}</strong><span>✓ {bulkProgress.created} created · ✕ {bulkProgress.failed} failed</span><progress value={bulkProgress.completed} max={bulkProgress.total} />{bulkProgress.jobId && <small>Job {bulkProgress.jobId}</small>}</div>}
+    {importReviewBusy && <div className="pg-notice" role="status">Screening all S-AD tickets against the original dataset…</div>}
     {notice && <div className="pg-notice">{notice}<button onClick={()=>setNotice("")}>×</button></div>}
     <main className="pg-main"><section className="pg-canvas">{nodes.length===0&&<div className="pg-empty"><div className="pg-empty-icon">✦</div><h2>Your planning space is empty</h2><p>Add work, arrange it visually, then let Foreman compare drafts with the existing backlog before publishing.</p><div className="pg-empty-hints"><span>Epic → Feature → Story</span><span>Duplicate check</span><span>Dependencies</span><span>Human approval</span></div></div>}
       <ReactFlow className={motionEnabled ? "pg-motion-on" : "pg-motion-off"} nodes={displayedNodes} edges={displayedEdges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>setSelectedId(n.id)} onPaneClick={()=>setSelectedId(null)} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding:0.18, minZoom:0.65, maxZoom:1 }} minZoom={.2} maxZoom={1.8} defaultEdgeOptions={{ style:{ strokeWidth:1.7 } }} proOptions={{hideAttribution:true}}><Background variant={BackgroundVariant.Dots} gap={24} size={1}/>{showMinimap && <MiniMap pannable zoomable nodeColor={n => ({Epic:"#8b5cf6",Feature:"#2563eb",Story:"#0d9488",Task:"#f97316"}[n.data.type] || "#64748b")}/>}<Controls/></ReactFlow></section>
@@ -711,6 +736,8 @@ function PlaygroundInner() {
         {selectedNode.data.type==="Story" && <label>Acceptance criteria<textarea rows="4" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.acceptanceCriteria||""} onChange={(e)=>updateSelected({acceptanceCriteria:e.target.value})} placeholder="One criterion per line…"/></label>}
         {selectedNode.data.type==="Story" && <label>Definition of Done<textarea rows="3" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.dod||""} onChange={(e)=>updateSelected({dod:e.target.value.split("\n").slice(0,2).join("\n")})} placeholder="Up to 2 DoD items, one per line…"/></label>}
         {selectedNode.data.sourceSectionId && <section className="pg-ai-card"><strong>SAD traceability</strong><p>Source section: {selectedNode.data.sourceSectionId}</p><p>{selectedNode.data.sourceExcerpt || "No source excerpt returned; verify against the document."}</p>{selectedNode.data.assumptions?.length > 0 && <p>Assumptions to review: {selectedNode.data.assumptions.join("; ")}</p>}</section>}
+        {selectedNode.data.semanticReview?.decision === "needs_review" && !selectedNode.data.semanticReview.matches?.length && <button type="button" className="pg-create" disabled={analysisBusy || !datasetId} onClick={async()=>{if (!datasetId) return; setAnalysisBusy(true); try { const data=selectedNode.data; const result=await reviewStory(datasetId,{story:{id:selectedNode.id,title:data.title,description:data.description||"",acceptance_criteria:data.acceptanceCriteria||"",type:data.type,parent_id:data.parentId||""},local_drafts:localStoryDrafts(selectedNode.id)}); updateSelected({semanticReview:result,duplicateReviewed:result.decision==="new"}); }catch(error){setNotice(`Duplicate review failed: ${error.message}`);}finally{setAnalysisBusy(false);}}}>Recheck edited ticket against full backlog</button>}
+        {selectedNode.data.semanticReview && <section className="pg-ai-card" aria-label="Full backlog duplicate review"><strong>{selectedNode.data.semanticReview.decision === "equivalent" ? "⛔ Equivalent ticket found — publishing blocked" : selectedNode.data.semanticReview.decision === "needs_review" ? "⚑ Semantic duplicate candidate — review required" : "✓ Full backlog screened"}</strong><p>Compared with {selectedNode.data.semanticReview.checked_original_count || 0} original tickets and {selectedNode.data.semanticReview.checked_local_count || 0} local/import drafts.</p>{(selectedNode.data.semanticReview.matches || []).map((match,index)=><p key={`${match.source}-${match.id}-${index}`}><b>{match.id || "Draft"}</b> · {match.title} ({match.source}; similarity {match.semantic_similarity})<br/>{match.reason}</p>)}{selectedNode.data.semanticReview.decision === "needs_review" && <><label>Explain the distinct scope<textarea rows="2" disabled={Boolean(selectedNode.data.jiraKey)} value={selectedNode.data.distinctReason || ""} onChange={e=>updateSelected({distinctReason:e.target.value,duplicateReviewed:false})} placeholder="How do behavior and acceptance criteria differ?"/></label><label><input type="checkbox" checked={Boolean(selectedNode.data.duplicateReviewed)} disabled={Boolean(selectedNode.data.jiraKey) || (selectedNode.data.distinctReason || "").trim().length < 12} onChange={e=>updateSelected({duplicateReviewed:e.target.checked})}/> I reviewed these matches and confirm distinct work.</label></>}</section>}
         {highConfidenceCandidates(selectedNode.data).length > 0 && <section className="pg-ai-card"><strong>High-confidence duplicate candidates · review required</strong><p>Strong title and description overlap; verify scope before publishing.</p>{highConfidenceCandidates(selectedNode.data).map(candidate => <p key={candidate.ticket_id}><b>{candidate.ticket_id}</b> · {candidate.title} · score {candidate.score}</p>)}<label><input type="checkbox" checked={Boolean(selectedNode.data.duplicateReviewed)} disabled={Boolean(selectedNode.data.jiraKey)} onChange={e => updateSelected({ duplicateReviewed: e.target.checked })}/> I reviewed these candidates and confirm this is separate new work.</label></section>}
         {selectedNode.data.type!=="Note" && <section className="pg-ai-card"><div className="pg-ai-head"><div><span className="pg-spark">✦</span><strong>Foreman review</strong></div><button onClick={analyzeSelected} disabled={analysisBusy||Boolean(selectedNode.data.jiraKey)}>{analysisBusy?"Checking…":selectedNode.data.analysis?"Check again":"Analyze"}</button></div>
           {!datasetId ? <p>Connect a dataset to check this draft against existing work.</p> : selectedNode.data.analysis ? <>{duplicate ? <div className="pg-duplicate"><div><strong>{duplicateLevel}</strong><span>{distance!==null?`distance ${distance.toFixed(3)}`:"semantic candidate"}</span></div><b>{duplicate.ticket_id}</b><p>{duplicate.title}</p><div className="pg-dup-actions"><button onClick={()=>updateSelected({duplicate:null})}>Not duplicate</button><button onClick={()=>navigate("/canvas",{state:{datasetId}})}>View existing</button></div></div> : <div className="pg-clear-check">✓ No high-confidence overlap was flagged by the current review threshold.</div>}

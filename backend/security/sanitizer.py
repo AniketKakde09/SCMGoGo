@@ -14,7 +14,18 @@ import uuid
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+
+from presidio_analyzer import (
+    AnalyzerEngine,
+    RecognizerRegistry,
+)
+from presidio_analyzer.nlp_engine import (
+    NlpEngineProvider,
+)
+
 from typing import Any
+
+
 
 try:
     from presidio_analyzer import AnalyzerEngine
@@ -117,12 +128,54 @@ FALLBACK_PII_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
 ]
 
 
+# @lru_cache(maxsize=1)
+# def _presidio_engines():
+#     """Create Presidio engines once per worker, lazily."""
+#     if not _PRESIDIO_IMPORTS_AVAILABLE:
+#         return None, None
+#     return AnalyzerEngine(), AnonymizerEngine()
+
+
+
 @lru_cache(maxsize=1)
 def _presidio_engines():
-    """Create Presidio engines once per worker, lazily."""
+    """Create Presidio engines using the installed small spaCy model."""
+
     if not _PRESIDIO_IMPORTS_AVAILABLE:
         return None, None
-    return AnalyzerEngine(), AnonymizerEngine()
+
+    configuration = {
+        "nlp_engine_name": "spacy",
+        "models": [
+            {
+                "lang_code": "en",
+                "model_name": "en_core_web_sm"
+            }
+        ]
+    }
+
+    provider = NlpEngineProvider(
+        nlp_configuration=configuration
+    )
+
+    nlp_engine = provider.create_engine()
+
+    registry = RecognizerRegistry()
+    registry.load_predefined_recognizers(
+        nlp_engine=nlp_engine
+    )
+
+    analyzer = AnalyzerEngine(
+        registry=registry,
+        nlp_engine=nlp_engine,
+        supported_languages=["en"]
+    )
+
+    anonymizer = AnonymizerEngine()
+
+    return analyzer, anonymizer
+
+
 
 
 def _get_unique_placeholder(entity_type: str, mapping: dict[str, str], original_value: str) -> str:

@@ -6,6 +6,7 @@ import UploadDataset from "./pages/UploadDataset";
 import Canvas from "./pages/Canvas";
 import PlanningPlayground from "./pages/PlanningPlayground";
 import SADIntake from "./pages/SADIntake";
+import CapacityStudio from "./pages/CapacityStudio";
 import ForecastReportRoute from "./pages/ForecastReportRoute";
 import WorkspaceShell from "./components/WorkspaceShell";
 
@@ -21,6 +22,7 @@ function App() {
           <Route path="/canvas" element={<Canvas />} />
           <Route path="/playground" element={<PlanningPlayground />} />
           <Route path="/sad" element={<SADIntake />} />
+          <Route path="/capacity" element={<CapacityStudio />} />
         </Route>
         <Route path="*" element={<Navigate to="/start" replace />} />
       </Routes>

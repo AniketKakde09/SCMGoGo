@@ -7,6 +7,7 @@ import os
 import time
 import re
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from difflib import SequenceMatcher
 from pathlib import Path
 import pandas as pd
@@ -227,21 +228,22 @@ def _split_chunk(chunk):
 def _generate_batch(llm, chunk, index, total, depth=0):
     prompt = (
         'Convert ONLY the supplied SAD excerpt into a SMALL draft delivery hierarchy. '
-        'Return ONLY a JSON object with key tickets, an array of AT MOST THREE objects. '
+        'Return ONLY a valid JSON object with a root key "tickets" containing an array of objects. Do not wrap the JSON in markdown. '
         'If there is no actionable requirement return {"tickets":[]}. '
-        'For actionable content return one Epic, one child Feature and optionally one child Story OR Task. '
         'Each ticket must have temp_id, parent_temp_id (empty for Epic), type, title, '
+        'Capture all necessary work including foundational infrastructure, core functional features, QA, and security.'
         'description (maximum 120 characters), acceptance_criteria (at most 2 short strings), '
         'definition_of_done (AT MOST 2 short strings, only when the supplied excerpt supports them), '
         'source_section_id, source_excerpt (short quotation from excerpt), assumptions (at most 1 short string). '
         'Use only the provided source_section_id. Use IDs e1, f1, s1 within this batch. '
-        'Hierarchy Epic -> Feature -> Story/Task. Do not invent requirements or Jira keys. '
-        'Do not add generic security, testing or deployment work unless explicitly supported. '
+        'Every ticket must trace directly back to the SAD section that motivates it '
         'Definition of Done must describe verifiable completion outcomes derived from the supplied excerpt; '
         'do not invent project-wide standards. Return at most 2 DoD items and use [] when the excerpt does not '
         'provide enough evidence. DoD applies to Stories; for Epic/Feature/Task return []. '
         'Keep the entire JSON short and complete; no markdown.'
     )
+ 
+
     payload = json.dumps({'source_section_id': chunk['id'], 'section_title': chunk['title'],
                           'excerpt': chunk['text']}, ensure_ascii=False)
     last_error = None
@@ -403,6 +405,43 @@ def _reconcile_hierarchy(llm, staged):
         raise HTTPException(502, 'Hierarchy reconciliation lost generated work')
     return output
 
+def _generate_chunks(llm, chunks):
+    """Generate independent source chunks concurrently; return in document order.
+
+    All-or-nothing: no proposal is returned if any chunk fails. A bounded worker
+    count limits concurrent provider requests; set SAD_GENERATION_WORKERS=1 to
+    restore the previous sequential behavior for rate-limited providers.
+    """
+    raw_workers = os.getenv('SAD_GENERATION_WORKERS', '1')
+    try:
+        workers = int(raw_workers)
+    except ValueError as exc:
+        raise HTTPException(500, 'SAD_GENERATION_WORKERS must be an integer from 1 to 4') from exc
+    if not 1 <= workers <= 4:
+        raise HTTPException(500, 'SAD_GENERATION_WORKERS must be an integer from 1 to 4')
+    started = time.monotonic()
+    logger.info('SAD generation started: chunks=%s workers=%s', len(chunks), min(workers, len(chunks)))
+    if workers == 1 or len(chunks) == 1:
+        results = [_generate_batch(llm, chunk, i, len(chunks))
+                   for i, chunk in enumerate(chunks, start=1)]
+    else:
+        results = [None] * len(chunks)
+        with ThreadPoolExecutor(max_workers=min(workers, len(chunks))) as pool:
+            futures = {pool.submit(_generate_batch, llm, chunk, i, len(chunks)): i - 1
+                       for i, chunk in enumerate(chunks, start=1)}
+            for future in as_completed(futures):
+                index = futures[future]
+                try:
+                    results[index] = future.result()
+                except Exception:
+                    for pending in futures:
+                        pending.cancel()
+                    raise
+    logger.info('SAD generation completed: chunks=%s elapsed_seconds=%.2f',
+                len(chunks), time.monotonic() - started)
+    return results
+
+
 def generate_proposal(text: str, excel_path: Path, document_title: str):
     # Security boundary: sanitize SAD content before parsing/chunking or any LLM call.
     sanitized_sad = sanitize_text(text)
@@ -426,8 +465,7 @@ def generate_proposal(text: str, excel_path: Path, document_title: str):
 
     # Stage each batch in memory. On any error, return no proposal; never publish to Jira.
     staged = []
-    for index, chunk in enumerate(chunks, start=1):
-        raw = _generate_batch(llm, chunk, index, len(chunks))
+    for chunk, raw in zip(chunks, _generate_chunks(llm, chunks)):
         if len(staged) + len(raw) > MAX_TICKETS:
             raise HTTPException(422, f'SAD would exceed {MAX_TICKETS} draft tickets; split document into smaller SADs. No partial proposal was returned.')
         local_ids = {str(item['temp_id']).strip(): f'sad-{uuid.uuid4().hex[:12]}' for item in raw}
@@ -449,7 +487,10 @@ def generate_proposal(text: str, excel_path: Path, document_title: str):
             })
     if not staged:
         raise HTTPException(422, 'No actionable requirements found in the SAD; no tickets were generated')
+    reconciliation_started = time.monotonic()
     staged = _reconcile_hierarchy(llm, staged)
+    logger.info('SAD hierarchy reconciliation completed: elapsed_seconds=%.2f',
+                time.monotonic() - reconciliation_started)
     if len(staged) > MAX_TICKETS:
         raise HTTPException(422, f'Consolidated SAD exceeds {MAX_TICKETS} draft tickets; no partial proposal was returned')
     try:
