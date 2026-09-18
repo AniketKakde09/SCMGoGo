@@ -254,14 +254,15 @@ export function watchJiraSync(jobId, { onEvent, onError } = {}) {
 }
 
 // SAD proposal generation; these endpoints never create Jira issues.
-export function generateSADText(datasetId, text, title) {
+export function generateSADText(datasetId, text, title, clarifications) {
   return request(`/datasets/${encodeURIComponent(datasetId)}/sad/generate`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, title }),
+    body: JSON.stringify({ text, title, clarifications: clarifications && clarifications.length ? clarifications : undefined }),
   });
 }
-export function generateSADFile(datasetId, file) {
+export function generateSADFile(datasetId, file, clarifications) {
   const body = new FormData(); body.append("file", file);
+  if (clarifications && clarifications.length) body.append("clarifications", JSON.stringify(clarifications));
   return request(`/datasets/${encodeURIComponent(datasetId)}/sad/upload`, { method: "POST", body });
 }
 

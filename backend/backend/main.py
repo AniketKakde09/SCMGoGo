@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -344,9 +344,15 @@ def intake_conversation(dataset_id: str, request: IntakeConversationRequest):
         }
     return clean_result
 
+class ClarificationAnswer(BaseModel):
+    question: str = Field(min_length=1, max_length=400)
+    answer: str = Field(min_length=1, max_length=1000)
+
+
 class SADTextRequest(BaseModel):
     text: str = Field(min_length=60, max_length=70000)
     title: str = Field(default="System Architecture Document", max_length=200)
+    clarifications: list[ClarificationAnswer] | None = None
 
 
 @app.post("/datasets/{dataset_id}/sad/generate")
@@ -354,17 +360,30 @@ def generate_sad_text(dataset_id: str, request: SADTextRequest):
     metadata = manager.read_metadata(dataset_id)
     if metadata.get("status") != "ready":
         raise HTTPException(409, "Dataset must be ready before duplicate review")
-    return generate_proposal(request.text, manager.paths(dataset_id)["excel"], request.title)
+    clarifications = [c.model_dump() for c in request.clarifications] if request.clarifications else None
+    return generate_proposal(request.text, manager.paths(dataset_id)["excel"], request.title, clarifications)
 
 
 @app.post("/datasets/{dataset_id}/sad/upload")
-async def generate_sad_upload(dataset_id: str, file: UploadFile = File(...)):
+async def generate_sad_upload(
+    dataset_id: str,
+    file: UploadFile = File(...),
+    clarifications: str | None = Form(None),
+):
     metadata = manager.read_metadata(dataset_id)
     if metadata.get("status") != "ready":
         raise HTTPException(409, "Dataset must be ready before duplicate review")
     data = await file.read(MAX_BYTES + 1)
     text = extract_document(file.filename or "", data)
-    return generate_proposal(text, manager.paths(dataset_id)["excel"], file.filename or "SAD")
+    parsed_clarifications = None
+    if clarifications:
+        try:
+            parsed_clarifications = json.loads(clarifications)
+        except json.JSONDecodeError:
+            raise HTTPException(422, "clarifications must be a JSON array of {question, answer} objects")
+        if not isinstance(parsed_clarifications, list):
+            raise HTTPException(422, "clarifications must be a JSON array of {question, answer} objects")
+    return generate_proposal(text, manager.paths(dataset_id)["excel"], file.filename or "SAD", parsed_clarifications)
 
 @app.get("/datasets/{dataset_id}/estimation")
 def estimation_workspace(

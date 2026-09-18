@@ -227,16 +227,15 @@ def _split_chunk(chunk):
 def _generate_batch(llm, chunk, index, total, depth=0):
     prompt = (
         'Convert ONLY the supplied SAD excerpt into a SMALL draft delivery hierarchy. '
-        'Return ONLY a JSON object with key tickets, an array of AT MOST THREE objects. '
+        'Return ONLY a valid JSON object with a root key "tickets" containing an array of objects. Do not wrap the JSON in markdown. '
         'If there is no actionable requirement return {"tickets":[]}. '
-        'For actionable content return one Epic, one child Feature and optionally one child Story OR Task. '
         'Each ticket must have temp_id, parent_temp_id (empty for Epic), type, title, '
+        'Capture all necessary work including foundational infrastructure, core functional features, QA, and security.'
         'description (maximum 120 characters), acceptance_criteria (at most 2 short strings), '
         'definition_of_done (AT MOST 2 short strings, only when the supplied excerpt supports them), '
         'source_section_id, source_excerpt (short quotation from excerpt), assumptions (at most 1 short string). '
         'Use only the provided source_section_id. Use IDs e1, f1, s1 within this batch. '
-        'Hierarchy Epic -> Feature -> Story/Task. Do not invent requirements or Jira keys. '
-        'Do not add generic security, testing or deployment work unless explicitly supported. '
+        'Every ticket must trace directly back to the SAD section that motivates it '
         'Definition of Done must describe verifiable completion outcomes derived from the supplied excerpt; '
         'do not invent project-wide standards. Return at most 2 DoD items and use [] when the excerpt does not '
         'provide enough evidence. DoD applies to Stories; for Epic/Feature/Task return []. '
@@ -403,7 +402,79 @@ def _reconcile_hierarchy(llm, staged):
         raise HTTPException(502, 'Hierarchy reconciliation lost generated work')
     return output
 
-def generate_proposal(text: str, excel_path: Path, document_title: str):
+def _identify_clarifications(llm, text: str, document_title: str):
+    """Single pass over the whole SAD: surface genuine ambiguities before ticket generation.
+
+    Always returns between 1 and 5 questions (enforced below), each with a suggested
+    default_answer so the user can accept it as-is or edit it. Best-effort: if the LLM
+    call fails outright, fall back to a single generic confirmation question rather than
+    blocking proposal generation entirely.
+    """
+    fallback = [{'id': f'clarify-{uuid.uuid4().hex[:10]}',
+                'question': 'Is this document ready to be broken down as written, or is anything missing?',
+                'context': '',
+                'default_answer': 'Proceed as written; no further clarification needed.'}]
+    try:
+        answer = llm.generate_json(
+            'You are reviewing a Software Architecture Document before it is decomposed into a delivery '
+            'backlog (Epic/Feature/Story/Task). Identify genuine ambiguities, missing information, undecided '
+            'scope, or conflicting requirements that would materially change how the work should be broken '
+            'down, sequenced, or estimated. Do not ask about writing style, formatting, or points already '
+            'answered elsewhere in the document. If nothing is genuinely ambiguous, ask a single confirmation '
+            'question about the most important assumption a delivery team would still be making. '
+            'Return ONLY JSON {"questions": [{"question": "short specific question", "context": "short '
+            'paraphrase of the relevant part of the document, not a verbatim quotation", "default_answer": '
+            '"a reasonable default answer the user can accept as-is or edit"}]}. Return AT LEAST 1 and AT '
+            'MOST 5 questions, highest-impact first.',
+            json.dumps({'document_title': document_title, 'text': text}, ensure_ascii=False),
+            max_tokens=1400,
+        )
+    except (ValueError, TypeError, KeyError, RuntimeError) as exc:
+        logger.warning('SAD clarification pass failed: %s; using fallback confirmation question',
+                       type(exc).__name__)
+        return fallback
+    raw = answer.get('questions') if isinstance(answer, dict) else None
+    if not isinstance(raw, list):
+        return fallback
+    questions = []
+    for item in raw[:5]:
+        if not isinstance(item, dict):
+            continue
+        question = sanitize_text(str(item.get('question', ''))).text.strip()[:400]
+        if not question:
+            continue
+        context = sanitize_text(str(item.get('context', ''))).text.strip()[:300]
+        default_answer = sanitize_text(str(item.get('default_answer', ''))).text.strip()[:500]
+        if not default_answer:
+            default_answer = 'Proceed as written; no further clarification needed.'
+        questions.append({'id': f'clarify-{uuid.uuid4().hex[:10]}', 'question': question,
+                          'context': context, 'default_answer': default_answer})
+    return questions[:5] if questions else fallback
+
+
+def _apply_clarifications(text: str, clarifications):
+    """Fold user-answered clarification Q&A back into the document as a normal section.
+
+    Reusing the existing section/chunk pipeline means answers flow into ticket
+    generation the same way any other SAD content does, instead of needing a
+    separate code path.
+    """
+    if not clarifications:
+        return text
+    lines = []
+    for item in clarifications:
+        if not isinstance(item, dict):
+            continue
+        question = sanitize_text(str(item.get('question', ''))).text.strip()[:400]
+        answer = sanitize_text(str(item.get('answer', ''))).text.strip()[:1000]
+        if question and answer:
+            lines.append(f'Q: {question}\nA: {answer}')
+    if not lines:
+        return text
+    return text.rstrip() + '\n\nClarifications\n' + '\n\n'.join(lines) + '\n'
+
+
+def generate_proposal(text: str, excel_path: Path, document_title: str, clarifications=None):
     # Security boundary: sanitize SAD content before parsing/chunking or any LLM call.
     sanitized_sad = sanitize_text(text)
     text = sanitized_sad.text.strip()
@@ -416,13 +487,36 @@ def generate_proposal(text: str, excel_path: Path, document_title: str):
         raise HTTPException(422, 'Provide at least 60 characters of architecture content')
     if len(text) > MAX_CHARS:
         raise HTTPException(413, f'SAD text must be {MAX_CHARS} characters or fewer')
+
+    llm = LLMClient()
+    if not llm.enabled:
+        raise HTTPException(503, 'SAD generation requires LLM_PROVIDER=groq or bedrock. No tickets were generated.')
+
+    # First pass (no answers yet): ask the LLM whether it needs anything clarified
+    # before committing to a ticket breakdown. Skip this pass once answers come back.
+    if not clarifications:
+        questions = _identify_clarifications(llm, text, document_title)
+        if questions:
+            sections = sections_from_text(text)
+            return {
+                'status': 'needs_clarification',
+                'document_title': document_title,
+                'security': {
+                    'input_sanitized': sanitized_sad.changed,
+                    'categories_detected': sanitized_sad.categories,
+                },
+                'sections': [{'id': s['id'], 'title': s['title']} for s in sections],
+                'clarifications': questions,
+                'tickets': [],
+                'publish_status': 'awaiting_clarification',
+            }
+    else:
+        text = _apply_clarifications(text, clarifications)
+
     sections = sections_from_text(text)
     chunks = _chunks(sections)
     if not chunks:
         raise HTTPException(422, 'No readable SAD section content found')
-    llm = LLMClient()
-    if not llm.enabled:
-        raise HTTPException(503, 'SAD generation requires LLM_PROVIDER=groq or bedrock. No tickets were generated.')
 
     # Stage each batch in memory. On any error, return no proposal; never publish to Jira.
     staged = []
@@ -463,6 +557,7 @@ def generate_proposal(text: str, excel_path: Path, document_title: str):
         item['duplicate_candidates'] = _candidate(item, backlog)
         item['review_status'] = 'potential_duplicate' if item['duplicate_candidates'] else 'new_proposal'
     return {
+        'status': 'complete',
         'document_title': document_title,
         'security': {
             'input_sanitized': sanitized_sad.changed,
@@ -473,5 +568,6 @@ def generate_proposal(text: str, excel_path: Path, document_title: str):
         'coverage': [{'section_id': s['id'], 'title': s['title'],
                       'ticket_count': sum(t['source_section_id'] == s['id'] for t in staged)} for s in sections],
         'duplicate_method': 'Conservative same-type title AND description screening; flagged matches require human review. Not semantic verification.',
+        'clarifications_applied': bool(clarifications),
         'publish_status': 'draft_only',
     }

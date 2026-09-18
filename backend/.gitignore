@@ -4,3 +4,4 @@ __pycache__/
 .env
 vectorstore/chroma/*
 !vectorstore/chroma/.gitkeep
+datatsets/*
