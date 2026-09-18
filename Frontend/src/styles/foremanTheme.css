@@ -132,3 +132,149 @@ html,body,#root{width:100%;height:100%;margin:0;overflow:hidden;font-family:Inte
 .auth-page .auth-logo-image img{display:block;width:100%;height:100%;object-fit:cover}
 .auth-page .auth-button{background:var(--gogo-sky)!important;border-color:var(--gogo-sky)!important;color:var(--gogo-navy)!important;font-weight:750}
 .auth-page .auth-button:hover{background:#0EA5E9!important}
+
+/* =========================================================
+   GOGO UI standardization layer
+   Centralized overrides intentionally live here so individual feature CSS
+   can keep layout/behavior rules while every page shares one visual system.
+   ========================================================= */
+:root{
+  --gogo-bg:#F8FAFC;
+  --gogo-surface:#FFFFFF;
+  --gogo-surface-soft:#F1F5F9;
+  --gogo-navy:#0F172A;
+  --gogo-slate:#1E293B;
+  --gogo-text:#334155;
+  --gogo-muted:#64748B;
+  --gogo-subtle:#94A3B8;
+  --gogo-sky:#38BDF8;
+  --gogo-sky-hover:#0EA5E9;
+  --gogo-sky-soft:#E0F2FE;
+  --gogo-border:#E2E8F0;
+  --gogo-border-strong:#CBD5E1;
+  --gogo-success:#059669;
+  --gogo-warning:#D97706;
+  --gogo-danger:#DC2626;
+  --gogo-radius-sm:8px;
+  --gogo-radius:12px;
+  --gogo-radius-lg:16px;
+  --gogo-shadow-sm:0 1px 2px rgba(15,23,42,.05);
+  --gogo-shadow:0 8px 24px rgba(15,23,42,.07);
+}
+
+/* Shared page canvas + typography */
+.fm-app-shell :is(.cs-studio,.est-page,.fr-page,.fa-page,.pg-shell,.sad-page){color:var(--gogo-navy)}
+.fm-app-shell :is(.cs-studio,.est-page,.fr-page,.fa-page,.pg-shell){background:var(--gogo-bg)}
+.fm-app-shell :is(.cs-eyebrow,.est-eyebrow,.fa-eyebrow,.sad-eyebrow){color:var(--gogo-sky-hover)!important;letter-spacing:.12em;font-weight:800}
+.fm-app-shell :is(.cs-hero-copy,.est-page,.fr-page,.fa-page,.sad-page) h1,
+.fm-app-shell :is(.cs-hero-copy,.est-page,.fr-page,.fa-page,.sad-page) h2,
+.fm-app-shell :is(.cs-hero-copy,.est-page,.fr-page,.fa-page,.sad-page) h3{color:var(--gogo-navy)}
+
+/* Shared cards and panels */
+.fm-app-shell :is(.cs-panel,.cs-editor,.cs-map,.cs-metric,.est-summary-card,.est-table-card,.est-legend-card,.fr-panel,.fa-card,.fa-summary-tile,.fa-detail,.sad-panel,.search-result-card){
+  background:var(--gogo-surface)!important;
+  border-color:var(--gogo-border)!important;
+  border-radius:var(--gogo-radius)!important;
+  box-shadow:var(--gogo-shadow-sm)!important;
+}
+.fm-app-shell :is(.cs-panel,.cs-editor,.cs-map,.est-summary-card,.est-table-card,.fr-panel,.fa-card):hover{border-color:var(--gogo-border-strong)}
+
+/* Inputs, selects and text areas */
+.fm-app-shell :is(.cs-studio,.est-page,.fr-page,.fa-page,.sad-page,.pg-shell) :is(input,select,textarea),
+.ssp-dialog :is(input,select,textarea),
+.auth-page :is(input,select,textarea){
+  border-color:var(--gogo-border-strong);
+  border-radius:var(--gogo-radius-sm);
+  background:var(--gogo-surface);
+  color:var(--gogo-navy);
+}
+.fm-app-shell :is(.cs-studio,.est-page,.fr-page,.fa-page,.sad-page,.pg-shell) :is(input,select,textarea):focus,
+.ssp-dialog :is(input,select,textarea):focus,
+.auth-page :is(input,select,textarea):focus{
+  border-color:var(--gogo-sky-hover)!important;
+  outline:none;
+  box-shadow:0 0 0 3px rgba(56,189,248,.16);
+}
+
+/* Primary actions */
+.fm-app-shell :is(.cs-primary,.cs-submit,.est-submit-button,.fr-button-primary,.fa-btn-primary,.sad-submit,.pg-toolbar .primary,.pg-popover-primary,.pg-review-confirm),
+.ssp-primary,
+.auth-page .auth-button{
+  background:var(--gogo-sky)!important;
+  border-color:var(--gogo-sky)!important;
+  color:var(--gogo-navy)!important;
+  border-radius:var(--gogo-radius-sm)!important;
+  font-weight:750;
+  box-shadow:0 4px 12px rgba(14,165,233,.16);
+}
+.fm-app-shell :is(.cs-primary,.cs-submit,.est-submit-button,.fr-button-primary,.fa-btn-primary,.sad-submit,.pg-toolbar .primary,.pg-popover-primary,.pg-review-confirm):not(:disabled):hover,
+.ssp-primary:not(:disabled):hover,
+.auth-page .auth-button:not(:disabled):hover{
+  background:var(--gogo-sky-hover)!important;
+  border-color:var(--gogo-sky-hover)!important;
+  color:var(--gogo-navy)!important;
+}
+
+/* Secondary / quiet actions */
+.fm-app-shell :is(.cs-secondary,.cs-icon-button,.cs-text-button,.fr-button,.fr-chip-button,.fa-btn,.fa-link-btn,.pg-quiet-action,.pg-actions button,.sad-switch button),
+.auth-page .auth-secondary-button{
+  border-color:var(--gogo-border-strong);
+  border-radius:var(--gogo-radius-sm);
+}
+.fm-app-shell :is(.cs-secondary,.cs-icon-button,.fr-button,.fr-chip-button,.fa-btn,.pg-quiet-action):not(:disabled):hover,
+.auth-page .auth-secondary-button:not(:disabled):hover{background:var(--gogo-sky-soft);border-color:#7DD3FC;color:var(--gogo-navy)}
+
+/* Tabs, segmented controls and selected states */
+.fm-app-shell :is(.cs-panel-tabs .active,.cs-segment.active,.fr-tab-on,.fr-toggle-on,.fr-sort-on,.sad-switch button.active,.pg-filters button.active){
+  background:var(--gogo-sky-soft)!important;
+  border-color:#7DD3FC!important;
+  color:#0369A1!important;
+}
+
+/* Capacity Studio */
+.fm-app-shell .cs-hero{background:linear-gradient(115deg,var(--gogo-slate),var(--gogo-navy) 72%,#123047)!important;border-radius:var(--gogo-radius-lg);box-shadow:var(--gogo-shadow)}
+.fm-app-shell .cs-hero :is(h1,h2,h3){color:var(--gogo-bg)!important}
+.fm-app-shell .cs-hero :is(p,.cs-eyebrow){color:#BAE6FD!important}
+.fm-app-shell .cs-connect{background:var(--gogo-sky)!important;color:var(--gogo-navy)!important;border-color:var(--gogo-sky)!important}
+.fm-app-shell .cs-avatar{background:var(--gogo-sky-soft);color:#0369A1}
+.fm-app-shell .cs-safe-pill{background:#ECFDF5;color:#047857}
+
+/* Analysis */
+.fm-app-shell .fa-header{border-color:var(--gogo-border)}
+.fm-app-shell .fa-btn-primary{background:var(--gogo-sky)!important;color:var(--gogo-navy)!important}
+.fm-app-shell .fa-dataset-chip{background:var(--gogo-sky-soft);border-color:#BAE6FD;color:#0369A1}
+.fm-app-shell .fa-dataset-dot{background:var(--gogo-sky-hover)}
+.fm-app-shell .fa-bar-fill{background:linear-gradient(90deg,var(--gogo-sky-hover),var(--gogo-sky))}
+.fm-app-shell .fa-dropzone{border-color:var(--gogo-border-strong);background:var(--gogo-bg);border-radius:var(--gogo-radius)}
+.fm-app-shell .fa-dropzone-active{border-color:var(--gogo-sky-hover);background:var(--gogo-sky-soft)}
+
+/* Estimation + forecast tables */
+.fm-app-shell :is(.est-table,.fr-table) th{background:var(--gogo-surface-soft);color:var(--gogo-text)}
+.fm-app-shell :is(.est-table,.fr-table) :is(th,td){border-color:var(--gogo-border)}
+.fm-app-shell :is(.est-table,.fr-table) tbody tr:hover{background:#F8FAFC}
+.fm-app-shell .est-member-avatar{background:var(--gogo-sky-soft);color:#0369A1}
+.fm-app-shell .fr-tab-on{box-shadow:inset 0 -2px 0 var(--gogo-sky-hover)}
+.fm-app-shell .fr-row-selected{background:#F0F9FF!important}
+
+/* Planning canvas chrome */
+.fm-app-shell .pg-clean-header{background:var(--gogo-surface);border-color:var(--gogo-border)}
+.fm-app-shell .pg-canvas{background:radial-gradient(circle,#CBD5E1 0.8px,transparent 0.8px) 0 0/22px 22px,var(--gogo-bg)}
+.fm-app-shell .pg-node.is-selected{outline-color:var(--gogo-sky-hover)!important;box-shadow:0 8px 22px rgba(14,165,233,.14)}
+.fm-app-shell .pg-inspector{border-color:var(--gogo-border);box-shadow:-8px 0 24px rgba(15,23,42,.05)}
+
+/* Smart Sprint Planner modal can render outside WorkspaceShell. */
+.ssp-backdrop{background:rgba(15,23,42,.58)}
+.ssp-dialog{color:var(--gogo-navy);border:1px solid var(--gogo-border);border-radius:var(--gogo-radius-lg);box-shadow:0 24px 70px rgba(15,23,42,.22)}
+.ssp-dialog header small{color:var(--gogo-sky-hover)}
+.ssp-dialog header p,.ssp-note{color:var(--gogo-muted)}
+.ssp-list,.ssp-dialog details{background:var(--gogo-surface-soft);border-color:var(--gogo-border)}
+
+/* Auth / intake surfaces */
+.auth-page .auth-card{border-color:var(--gogo-border);box-shadow:0 20px 60px rgba(15,23,42,.12)}
+.auth-page .auth-badge,.auth-page .auth-link{color:#0284C7}
+.auth-page .file-dropzone{border-color:var(--gogo-border-strong);background:var(--gogo-bg)}
+.auth-page .file-dropzone:hover{border-color:var(--gogo-sky-hover);background:#F0F9FF}
+.auth-page .intake-mode-btn-active{background:var(--gogo-sky-soft)!important;border-color:#7DD3FC!important;color:#0369A1!important}
+
+/* Consistent disabled state across feature pages. */
+.fm-app-shell button:disabled,.ssp-dialog button:disabled,.auth-page button:disabled{opacity:.5;cursor:not-allowed;box-shadow:none!important;transform:none!important}
