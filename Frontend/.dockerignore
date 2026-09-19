@@ -1,0 +1,34 @@
+node_modules
+dist
+build
+.vite
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Testing / coverage
+coverage
+.nyc_output
+.cache
+
+# Docker
+docker-compose*.yml
